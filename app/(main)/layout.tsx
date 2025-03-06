@@ -22,12 +22,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/hooks/useAuth'; // Make sure you have this hook
+import { useAuth } from '@/hooks/useAuth';
 import Image from 'next/image';
 import { ProgressTimer } from '@/components/ui/progress-timer';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiRequest } from '../apiconnector/api';
-import { auth } from '@/lib/Firebase'; // Note the capital F in Firebase
+import { auth } from '@/lib/Firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { set } from 'zod';
 
@@ -56,7 +56,7 @@ export default function MainLayout({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [suggestedUsers, setSuggestedUser] = useState<SuggestedUser[]>([]);
   // const [userId,setUserId] = useState("");
-  
+
   useEffect(() => {
 
     let userId = localStorage.getItem('userId') || "404";
@@ -72,7 +72,7 @@ export default function MainLayout({
   const [myConnections, setMyConnections] = useState<Connection[]>([]);
 
   const [currentUser, setCurrentUser] = useState({
-    name: '',
+    username: '',
     email: '',
     photoURL: '',
   });
@@ -148,9 +148,9 @@ export default function MainLayout({
       console.log(user, "is the user");
       if (user) {
         let userId = localStorage.getItem('userId') || "404";
-        const User = await apiRequest(`users/${userId}`,'GET') || {};
+        const User = await apiRequest(`users/${userId}`, 'GET') || {};
         setCurrentUser({
-          name: User.username || 'Loading...',
+          username: User.username || 'Loading...',
           email: User.email || 'Loading...',
           photoURL: user.photoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=100&auto=format&fit=crop',
         });
@@ -265,7 +265,7 @@ export default function MainLayout({
                             className="w-full justify-start hover-scale"
                             onClick={async () => {
                               await signOut();
-                              localStorage.setItem("userId","Invalid");
+                              localStorage.setItem("userId", "Invalid");
                               router.push('/login');
                             }}
                           >
@@ -303,10 +303,10 @@ export default function MainLayout({
           {/* Replace the existing sidebar user section */}
           <div className="flex items-center gap-3 mb-4 p-2">
             <Avatar className="h-10 w-10">
-              <img src={currentUser.photoURL} alt={currentUser.name} />
+              <img src={currentUser.photoURL} alt={currentUser.username} />
             </Avatar>
             <div>
-              <h3 className="font-medium">{currentUser.name}</h3>
+              <h3 className="font-medium">{currentUser.username}</h3>
               <p className="text-sm text-muted-foreground">{currentUser.email}</p>
             </div>
           </div>
@@ -729,7 +729,7 @@ export default function MainLayout({
                     ...user,
                     id: String(user.id)
                   }));
-                  setSearchResults(filtered);
+                  // setSearchResults(filtered);
                 }}
               />
             </div>

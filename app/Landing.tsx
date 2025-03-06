@@ -4,7 +4,7 @@ import { motion, AnimatePresence, useInView } from 'framer-motion';
 import { ArrowRight, Shield, Zap, ChevronDown, Globe, Clock, MessageSquare, CheckCircle, Menu, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import logo from '../../public/logo.png';
-export default function LandingPage() {
+export default function Landing() {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [activeTab, setActiveTab] = useState(0);
     const router=useRouter();
