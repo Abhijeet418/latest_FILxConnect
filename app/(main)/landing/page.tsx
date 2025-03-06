@@ -16,14 +16,15 @@ export default function LandingPage() {
     };
 
     const stats = [
-        { number: '10K+', label: 'Active Users' },
-        { number: '50+', label: 'Countries' },
+        { number: '28', label: 'Active Users' },
+        // { number: '50+', label: 'Countries' },
         { number: '99.9%', label: 'Uptime' },
-        { number: '24/7', label: 'Support' },
+        { number: 'FIL GGN', label: 'Exclusive' },
+        { number: '100%', label: 'Satisfaction' }
     ];
 
     const features = [
-        { title: 'Global Reach', description: 'Connect with teams across the globe', icon: <Globe className="h-6 w-6" /> },
+        { title: 'Organization Reach', description: 'Connect with teams across the organization.', icon: <Globe className="h-6 w-6" /> },
         { title: 'Real-time Collaboration', description: 'Work together seamlessly', icon: <Clock className="h-6 w-6" /> },
         { title: 'Instant Messaging', description: 'Quick and efficient communication', icon: <MessageSquare className="h-6 w-6" /> },
         { title: 'Enterprise Security', description: 'Your data is safe with us', icon: <Shield className="h-6 w-6" /> },
@@ -130,7 +131,7 @@ export default function LandingPage() {
                         <motion.h1
                             className="text-4xl sm:text-5xl md:text-6xl font-bold text-white mb-6 overflow-hidden"
                         >
-                            {["Bridging","Gaps, ","Strengthening","Bonds"].map((word, index) => (
+                            {["Connect","Collaborate","Create"].map((word, index) => (
                                 <motion.span
                                     key={index}
                                     className="inline-block mr-4"

@@ -23,6 +23,7 @@ import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '@/lib/Firebase';
 import { toast } from 'sonner';
 import { apiRequest } from '@/app/apiconnector/api';
+import Image from 'next/image';
 
 const formSchema = z.object({
   email: z.string().email({ message: 'Please enter a valid email address' }),
@@ -75,9 +76,16 @@ export default function LoginPage() {
   return (
     <>
       <div className="flex flex-col items-center space-y-4 animate-fade-in">
-        <div className="bg-primary/10 p-3 rounded-xl animate-pulse-slow">
-          <Share2 className="h-8 w-8 text-primary" />
-        </div>
+      <div className="flex items-center gap-4 mb-2">
+        <Image
+          src="/logo.png"
+          alt="FILxCONNECT Logo"
+          width={48}
+          height={48}
+          className="object-contain"
+        />
+        <span className="text-2xl font-bold text-primary">FILxCONNECT</span>
+      </div>
         <h1 className="text-2xl font-bold tracking-tight animate-slide-up">Welcome back</h1>
         <p className="text-sm text-muted-foreground max-w-sm text-center animate-slide-up" style={{ animationDelay: '0.1s' }}>
           Enter your credentials to access your account

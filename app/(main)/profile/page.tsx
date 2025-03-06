@@ -70,7 +70,7 @@ const emojiMap: { [key: string]: keyof ReactionCounts } = {
 export default function ProfilePage() {
   const [userProfile, setUserProfile] = useState({
     name: '',
-    avatar: 'https://res.cloudinary.com/djvat4mcp/image/upload/v1741243252/n4zfkrf62br7io8d2k0c.png',
+    profilepic: 'https://res.cloudinary.com/djvat4mcp/image/upload/v1741243252/n4zfkrf62br7io8d2k0c.png',
     bio: '',
     userId: '',
     stats: {
@@ -236,7 +236,7 @@ export default function ProfilePage() {
         setUserProfile(prev => ({
           ...prev,
           name: user.username || user.email?.split('@')[0] || 'Loading...',
-          avatar: user.photoURL || prev.avatar,
+          avatar: user.photoURL || prev.profilepic,
           bio: user.bio,
           userId: user.id
         }));
@@ -484,7 +484,7 @@ export default function ProfilePage() {
               {/* Post Header */}
               <div className="flex items-center gap-3 mb-4">
                 <Avatar className="w-10 h-10">
-                  <img src={userProfile.avatar} alt={userProfile.name} />
+                  <img src={userProfile.profilepic} alt={userProfile.name} />
                 </Avatar>
                 <div className="flex-1">
                   <h3 className="font-semibold">{userProfile.name}</h3>

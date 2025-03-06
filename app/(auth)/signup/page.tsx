@@ -24,6 +24,7 @@ import { auth, database } from '@/lib/Firebase';
 import { ref, serverTimestamp, set } from 'firebase/database';
 import { toast } from 'sonner';
 import { apiRequest } from '@/app/apiconnector/api';
+import Image from 'next/image';
 
 const formSchema = z.object({
   firstName: z.string().min(2, { message: 'First name must be at least 2 characters' }),
@@ -125,8 +126,15 @@ export default function SignupPage() {
   return (
     <>
       <div className="flex flex-col items-center space-y-4 animate-fade-in">
-        <div className="bg-primary/10 p-3 rounded-xl animate-pulse-slow">
-          <Share2 className="h-8 w-8 text-primary" />
+        <div className="flex items-center gap-4 mb-2">
+          <Image
+            src="/logo.png"
+            alt="FILxCONNECT Logo"
+            width={48}
+            height={48}
+            className="object-contain"
+          />
+          <span className="text-2xl font-bold text-primary">FILxCONNECT</span>
         </div>
         <h1 className="text-2xl font-bold tracking-tight animate-slide-up">Create an account</h1>
         <p className="text-sm text-muted-foreground max-w-sm text-center animate-slide-up" style={{ animationDelay: '0.1s' }}>
