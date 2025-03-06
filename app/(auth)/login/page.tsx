@@ -51,6 +51,11 @@ export default function LoginPage() {
       // // Simulate API call
       // await new Promise(resolve => setTimeout(resolve, 1000));
       const res = await signInWithEmailAndPassword(auth, values.email, values.password);
+      if (res.user.uid === null) {
+        throw new Error('Invalid email or password. Please try again.');
+        toast.error("Invalid email or password. Please try again.");
+      }
+
       console.log(res);
 
       toast.message("Login Successful");
@@ -61,7 +66,7 @@ export default function LoginPage() {
       console.log(user.id);
       if (user?.status === 1) {
         router.push('/home');
-      }else{
+      } else {
         router.push('/pending-approval');
       }
       // // For demo purposes, always redirect to pending-approval
@@ -76,16 +81,16 @@ export default function LoginPage() {
   return (
     <>
       <div className="flex flex-col items-center space-y-4 animate-fade-in">
-      <div className="flex items-center gap-4 mb-2">
-        <Image
-          src="/logo.png"
-          alt="FILxCONNECT Logo"
-          width={48}
-          height={48}
-          className="object-contain"
-        />
-        <span className="text-2xl font-bold text-primary">FILxCONNECT</span>
-      </div>
+        <div className="flex items-center gap-4 mb-2">
+          <Image
+            src="/logo.png"
+            alt="FILxCONNECT Logo"
+            width={48}
+            height={48}
+            className="object-contain"
+          />
+          <span className="text-2xl font-bold text-primary">FILxCONNECT</span>
+        </div>
         <h1 className="text-2xl font-bold tracking-tight animate-slide-up">Welcome back</h1>
         <p className="text-sm text-muted-foreground max-w-sm text-center animate-slide-up" style={{ animationDelay: '0.1s' }}>
           Enter your credentials to access your account
