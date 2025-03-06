@@ -45,6 +45,7 @@ interface Connection {
   profilePicture: string;
   status: 'online' | 'offline';
 }
+const DEFAULT_AVATAR = 'https://res.cloudinary.com/djvat4mcp/image/upload/v1741243252/n4zfkrf62br7io8d2k0c.png';
 
 export default function MainLayout({
   children,
@@ -217,7 +218,7 @@ export default function MainLayout({
                       <div className="flex flex-col h-full">
                         <div className="flex items-center gap-4 p-4 border-b">
                           <Avatar className="h-10 w-10">
-                            <img src={currentUser.photoURL} alt="User" />
+                            <img src={DEFAULT_AVATAR} alt="User" />
                           </Avatar>
                           <div>
                             <h3 className="font-medium">{currentUser.username}</h3>
@@ -303,7 +304,7 @@ export default function MainLayout({
           {/* Replace the existing sidebar user section */}
           <div className="flex items-center gap-3 mb-4 p-2">
             <Avatar className="h-10 w-10">
-              <img src={currentUser.photoURL} alt={currentUser.username} />
+              <img src={DEFAULT_AVATAR} alt={currentUser.username} />
             </Avatar>
             <div>
               <h3 className="font-medium">{currentUser.username}</h3>
@@ -356,7 +357,7 @@ export default function MainLayout({
                 >
                   <div className="relative">
                     <Avatar className="h-8 w-8">
-                      <img src={connection.profilePicture} alt={connection.username} />
+                      <img src={DEFAULT_AVATAR} alt={connection.username} />
                     </Avatar>
                     <span
                       className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-background ${connection.status === 'online' ? 'bg-green-500' : 'bg-gray-400'
@@ -539,7 +540,7 @@ export default function MainLayout({
                   >
                     <div className="relative">
                       <Avatar className="h-12 w-12">
-                        <img src={connection.profilePicture} alt={connection.username} />
+                        <img src={DEFAULT_AVATAR} alt={connection.username} />
                       </Avatar>
                       <span
                         className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background ${connection.status === 'online' ? 'bg-green-500' : 'bg-gray-400'
@@ -604,7 +605,7 @@ export default function MainLayout({
                     >
                       <div className="flex items-center gap-4">
                         <Avatar className="h-12 w-12">
-                          <Image width={80} height={80} src={user.profilePicture} alt={user.username} className="object-cover" />
+                          <Image width={80} height={80} src={DEFAULT_AVATAR} alt={user.username} className="object-cover" />
                         </Avatar>
                         <div className="flex-1 min-w-0">
                           <p className="font-medium truncate">{user.name}</p>
@@ -617,11 +618,17 @@ export default function MainLayout({
                           className={`transition-all duration-300 ${isRequestSent ? "text-green-500" : ""
                             }`}
                           onClick={() => {
-                            if (!isRequestSent) {
-                              setSentRequests(prev => [...prev, user.id]);
+                            if (!isRequestSent && !pendingRequests.includes(user.id)) {
+                              let userId = localStorage.getItem('userId') || "404";
+                              sentTheConnectionReq(user.id, userId);
+                              setPendingRequests(prev => [...prev, user.id]);
+                              setTimeout(() => {
+                                setPendingRequests(prev => prev.filter(id => id !== user.id));
+                                setSentRequests(prev => [...prev, user.id]);
+                              }, 3000);
                             }
                           }}
-                          disabled={isRequestSent}
+                          disabled={isRequestSent || pendingRequests.includes(user.id)}
                         >
                           {isRequestSent ? (
                             <Check className="h-4 w-4" />

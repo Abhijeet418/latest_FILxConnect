@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Avatar } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
-import { Camera, Edit, Heart, MessageCircle, Repeat } from 'lucide-react';
+import { Camera, Edit, Heart, MessageCircle, Repeat, Share, Link as LinkIcon, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -21,6 +21,8 @@ import { auth } from '@/lib/Firebase';
 import { onAuthStateChanged, updateProfile } from 'firebase/auth';
 import { apiRequest } from '@/app/apiconnector/api';
 import { Badge } from '@/components/ui/badge';
+
+const DEFAULT_AVATAR = 'https://res.cloudinary.com/djvat4mcp/image/upload/v1741243252/n4zfkrf62br7io8d2k0c.png';
 
 interface Reaction {
   id: string;
@@ -67,10 +69,57 @@ const emojiMap: { [key: string]: keyof ReactionCounts } = {
   'ƒÉ£': '😡'
 };
 
+// First, fix the timeAgo function to handle the specific date format
+function timeAgo(dateString: string) {
+  try {
+    if (!dateString) {
+      return 'Just now';
+    }
+
+    // Handle the API date format: "2025-03-05T19:23:23"
+    const date = new Date(dateString);
+    
+    if (isNaN(date.getTime())) {
+      console.error('Invalid date:', dateString);
+      return 'Just now';
+    }
+
+    const now = new Date();
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+    // Handle future dates
+    if (seconds < 0) {
+      return 'Just now';
+    }
+
+    const intervals = {
+      year: 31536000,
+      month: 2592000,
+      week: 604800,
+      day: 86400,
+      hour: 3600,
+      minute: 60,
+      second: 1
+    };
+
+    for (const [unit, secondsInUnit] of Object.entries(intervals)) {
+      const interval = Math.floor(seconds / secondsInUnit);
+      if (interval >= 1) {
+        return `${interval} ${unit}${interval === 1 ? '' : 's'} ago`;
+      }
+    }
+
+    return 'Just now';
+  } catch (error) {
+    console.error('Error parsing date:', error, 'for dateString:', dateString);
+    return 'Just now';
+  }
+}
+
 export default function ProfilePage() {
   const [userProfile, setUserProfile] = useState({
     name: '',
-    profilepic: 'https://res.cloudinary.com/djvat4mcp/image/upload/v1741243252/n4zfkrf62br7io8d2k0c.png',
+    profilepic: DEFAULT_AVATAR,
     bio: '',
     userId: '',
     stats: {
@@ -92,66 +141,65 @@ export default function ProfilePage() {
 
   const [activeLikesPost, setActiveLikesPost] = useState<number | null>(null);
   const [activeCommentsPost, setActiveCommentsPost] = useState<number | null>(null);
-  
+  const [newComment, setNewComment] = useState('');
+
   const fetchUserPosts = async () => {
     try {
       let userId = localStorage.getItem('userId') || "404";
       const rawPosts = await apiRequest(`posts/user/${userId}`) || [];
-  
-      // Map through each post and fetch additional data
-      const enrichedPosts: Post[] = await Promise.all(rawPosts.map(async (post: any): Promise<Post> => {
-        try {
-          // Fetch reactions count
-          const reactionsCount: number = await apiRequest(`reactions/posts/${post.id}/count`, 'GET') || -1;
       
-          // Fetch reactions list
-          const reactionsList: Reaction[] = await apiRequest(`reactions/posts/${post.id}`, 'GET') || [];
-          const likedBy: Reaction[] = reactionsList.map((reaction) => ({
+      // Filter posts with status "1" before processing
+      const activePosts = rawPosts.filter((post: any) => post.status === "1");
+  
+      // Then update the post object creation in fetchUserPosts
+      const enrichedPosts: Post[] = await Promise.all(activePosts.map(async (post: any) => {
+        try {
+          // Fetch reactions list first
+          const reactionsList = await apiRequest(`reactions/posts/${post.id}`, 'GET') || [];
+          const likedBy = reactionsList.map((reaction: any) => ({
             id: reaction.id,
             user: {
-              username: reaction.user.username,
-              avatar: reaction.user.avatar
+              username: reaction.username,
+              avatar: reaction.user?.profilePicture || DEFAULT_AVATAR
             },
-            emoji: emojiMap[reaction.emoji],
+            emoji: '👍',
             createdAt: new Date(reaction.createdAt).toLocaleString()
           }));
-          // Fetch comments count
-          const commentsCount: number = await apiRequest(`comments/${post.id}/count`, 'GET') || -1;
-          
+  
           // Fetch comments list
-          const comments: Comment[] = await apiRequest(`comments/${post.id}`, 'GET') || [];
-          const commentsList: Comment[] = comments.map((comment) => ({
+          const commentsList = await apiRequest(`comments/${post.id}`, 'GET');
+          const commentsArray = Array.isArray(commentsList) ? commentsList : [];
+          const formattedComments = commentsArray.map((comment: any) => ({
             id: comment.id,
             user: {
               username: comment.user.username,
-              avatar: comment.user.avatar
+              avatar: comment.user.profilePicture || DEFAULT_AVATAR
             },
             content: comment.content,
             createdAt: new Date(comment.createdAt).toLocaleString()
           }));
-      
-          // Convert the raw post data to match your Post interface
+  
+          // Return formatted post object
           return {
-        id: post.id,
-        content: post.content,
-        time: new Date(post.createdAt).toLocaleString(), // Assuming there's a createdAt field
-        reactions: reactionsCount,
-        comments: commentsCount,
-        commentsList: commentsList,
-        likedBy: []
-        // Add any additional fields from the raw post that you want to keep
+            id: post.id,
+            content: post.content,
+            time: timeAgo(post.createdAt), // Pass the raw date string directly
+            reactions: likedBy.length,
+            comments: formattedComments.length,
+            commentsList: formattedComments,
+            likedBy: likedBy
           };
+  
         } catch (error) {
           console.error(`Error fetching additional data for post ${post.id}:`, error);
-          // Return post with default values if fetching additional data fails
           return {
-        id: post.id,
-        content: post.content,
-        time: new Date(post.createdAt).toLocaleString(),
-        reactions: 0,
-        comments: 0,
-        commentsList: [],
-        likedBy: []
+            id: post.id,
+            content: post.content,
+            time: timeAgo(post.createdAt), // Use timeAgo here as well
+            reactions: 0,
+            comments: 0,
+            commentsList: [],
+            likedBy: []
           };
         }
       }));
@@ -232,13 +280,20 @@ export default function ProfilePage() {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         let userId = localStorage.getItem('userId') || "404";
-        let user = await apiRequest(`users/${userId}`,'GET');
+        let userResponse = await apiRequest(`users/${userId}`,'GET');
+        
+        // Update the profile picture from localStorage or API response
+        const profilePicture = localStorage.getItem("profile_picture") || 
+                             userResponse.profilePicture || 
+                             'https://res.cloudinary.com/djvat4mcp/image/upload/v1741243252/n4zfkrf62br7io8d2k0c.png';
+
         setUserProfile(prev => ({
           ...prev,
-          name: user.username || user.email?.split('@')[0] || 'Loading...',
-          avatar: user.photoURL || prev.profilepic,
-          bio: user.bio,
-          userId: user.id
+          name: userResponse.username || userResponse.email?.split('@')[0] || 'Loading...',
+          avatar: profilePicture, // Use the profile picture from localStorage or API
+          profilepic: profilePicture, // Update both avatar and profilepic
+          bio: userResponse.bio,
+          userId: userResponse.id
         }));
 
         fetchFollowerCounts();
@@ -246,8 +301,8 @@ export default function ProfilePage() {
         fetchUserPosts();
 
         setEditForm({
-          name: user.username || user.email?.split('@')[0] || 'User',
-          bio: user.bio || ''
+          name: userResponse.username || userResponse.email?.split('@')[0] || 'User',
+          bio: userResponse.bio || ''
         });
       }
     });
@@ -337,9 +392,138 @@ export default function ProfilePage() {
     }
   };
 
-  const handleLikeClick = (postId: number) => {
-    toast.error("Clicked the like button!");
-    // Rest of your like handling logic
+  const handleLikeClick = async (postId: number) => {
+    try {
+      let userId = localStorage.getItem('userId') || "404";
+      
+      // Check if user already liked the post
+      const currentPost = posts.find(p => p.id === postId);
+      const hasLiked = currentPost?.likedBy.some(like => like.user.username === userProfile.name);
+  
+      if (hasLiked) {
+        // Unlike the post
+        const unlikeResponse = await apiRequest(`reactions/${postId}/${userId}`, 'DELETE');
+        
+        if (unlikeResponse !== undefined) {
+          // Update state to remove the like
+          setPosts(prevPosts => 
+            prevPosts.map(post => {
+              if (post.id === postId) {
+                return {
+                  ...post,
+                  reactions: post.reactions - 1,
+                  likedBy: post.likedBy.filter(like => like.user.username !== userProfile.name)
+                };
+              }
+              return post;
+            })
+          );
+          toast.error("Unliked this post!");
+        }
+        return;
+      }
+  
+      // Add the like
+      const likeResponse = await apiRequest(`reactions/${postId}/${userId}/👍`, 'POST');
+      
+      if (likeResponse) {
+        // Update state to add the like
+        setPosts(prevPosts => 
+          prevPosts.map(post => {
+            if (post.id === postId) {
+              const newLike = {
+                id: Date.now().toString(),
+                user: {
+                  username: userProfile.name,
+                  avatar: userProfile.profilepic
+                },
+                emoji: '👍',
+                createdAt: new Date().toLocaleString()
+              };
+              
+              return {
+                ...post,
+                reactions: post.reactions + 1,
+                likedBy: [...post.likedBy, newLike]
+              };
+            }
+            return post;
+          })
+        );
+        toast.success("Post liked!");
+      }
+    } catch (error) {
+      console.error('Error liking/unliking post:', error);
+      toast.error("Failed to update like");
+    }
+  };
+
+  const handleCommentClick = async (postId: number) => {
+    setActiveCommentsPost(postId);
+  };
+
+  const handleCommentSubmit = async (postId: number) => {
+    try {
+      if (!newComment.trim()) {
+        toast.error('Please enter a comment');
+        return;
+      }
+  
+      const userId = localStorage.getItem('userId') || "404";
+      const response = await apiRequest(`comments?postId=${postId}&userId=${userId}&content=${newComment}`, 'POST');
+      console.log(response);
+  
+      if (response) {
+        // Add new comment to the state
+        setPosts(prevPosts =>
+          prevPosts.map(post => {
+            if (post.id === postId) {
+              const newCommentObj = {
+                id: Date.now().toString(),
+                user: {
+                  username: userProfile.name,
+                  avatar: userProfile.profilepic
+                },
+                content: newComment,
+                createdAt: new Date().toLocaleString()
+              };
+              return {
+                ...post,
+                comments: post.comments + 1,
+                commentsList: [...post.commentsList, newCommentObj]
+              };
+            }
+            return post;
+          })
+        );
+  
+        setNewComment(''); // Clear input
+        toast.success('Comment added successfully');
+      }
+    } catch (error) {
+      console.error('Error adding comment:', error);
+      toast.error('Failed to add comment');
+    }
+  };
+
+  const handleShare = async (postId: number) => {
+    try {
+      const shareUrl = `${window.location.origin}/post/${postId}`;
+      
+      if (navigator.share) {
+        await navigator.share({
+          title: 'Check out this post',
+          text: 'Check out this interesting post!',
+          url: shareUrl
+        });
+      } else {
+        await navigator.clipboard.writeText(shareUrl);
+        toast.success('Link copied to clipboard!');
+      }
+    } catch (error) {
+      console.error('Error sharing:', error);
+      toast.error('Failed to share post');
+    }
   };
 
   return (
@@ -467,7 +651,15 @@ export default function ProfilePage() {
                 <div className="text-sm text-muted-foreground">Following</div>
               </div>
               <div className="text-center md:text-left">
-                <div className="text-2xl font-bold text-destructive">{userProfile.stats.reports}</div>
+                <div className={`text-2xl font-bold ${
+                  userProfile.stats.reports === 0 
+                    ? 'text-green-500' 
+                    : userProfile.stats.reports === 1 
+                      ? 'text-orange-500' 
+                      : 'text-destructive'
+                }`}>
+                  {userProfile.stats.reports}
+                </div>
                 <div className="text-sm text-muted-foreground">Reports</div>
               </div>
             </div>
@@ -510,80 +702,173 @@ export default function ProfilePage() {
 
               {/* Interaction Buttons */}
               <div className="flex justify-between">
-                <Dialog open={activeLikesPost === post.id} onOpenChange={(open) => setActiveLikesPost(open ? post.id : null)}>
-                  <DialogTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleLikeClick(post.id)}
-                      className="hover:text-primary"
-                    >
-                      <Heart className={`h-4 w-4 mr-2`} />
-                      {post.reactions}
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Liked by</DialogTitle>
-                    </DialogHeader>
-                    <ScrollArea className="h-[300px] pr-4">
-                      <div className="space-y-4">
-                        {post.likedBy.map((rct) => (
-                          <div key={rct.user.username} className="flex items-center gap-3">
-                            <Avatar className="h-10 w-10">
-                              <img src={rct.user.avatar} alt={rct.user.username} />
-                            </Avatar>
-                            <div className="flex-1">
-                              <p className="font-medium">{rct.user.username}</p>
-                              {/* <p className="text-sm text-muted-foreground">{user.username}</p> */}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </ScrollArea>
-                  </DialogContent>
-                </Dialog>
+                <div className="flex items-center">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleLikeClick(post.id)}
+                    className="hover:text-primary p-0 mr-1"
+                  >
+                    <Heart 
+                      className={`h-4 w-4 ${
+                        post.likedBy.some(like => like.user.username === userProfile.name)
+                          ? 'fill-current text-primary'
+                          : ''
+                      }`} 
+                    />
+                  </Button>
 
-                <Dialog open={activeCommentsPost === post.id} onOpenChange={(open) => setActiveCommentsPost(open ? post.id : null)}>
-                  <DialogTrigger asChild>
-                    <Button variant="ghost" size="sm" className="hover:text-primary">
-                      <MessageCircle className="h-4 w-4 mr-2" />
-                      {post.comments}
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Comments</DialogTitle>
-                    </DialogHeader>
-                    <ScrollArea className="h-[400px] pr-4">
-                      <div className="space-y-4">
-                        {post.commentsList.map((comment) => (
-                          <div key={comment.id} className="space-y-2">
-                            <div className="flex items-center gap-3">
-                              <Avatar className="h-8 w-8">
-                                <img src={comment.user.avatar} alt={comment.user.username} />
+                  <Dialog open={activeLikesPost === post.id} onOpenChange={(open) => setActiveLikesPost(open ? post.id : null)}>
+                    <DialogTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="hover:text-primary p-0"
+                      >
+                        {post.reactions}
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Liked by</DialogTitle>
+                      </DialogHeader>
+                      <ScrollArea className="h-[300px] pr-4">
+                        <div className="space-y-4">
+                          {post.likedBy.map((rct) => (
+                            <div key={rct.user.username} className="flex items-center gap-3">
+                              <Avatar className="h-10 w-10">
+                                <img src={rct.user.avatar} alt={rct.user.username} />
                               </Avatar>
                               <div className="flex-1">
-                                <p className="font-medium">{comment.user.username}</p>
-                                <p className="text-xs text-muted-foreground">{comment.createdAt}</p>
+                                <p className="font-medium">{rct.user.username}</p>
                               </div>
                             </div>
-                            <p className="text-sm pl-11">{comment.content}</p>
-                            <Separator className="mt-4" />
-                          </div>
-                        ))}
+                          ))}
+                        </div>
+                      </ScrollArea>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+
+                <div className="flex items-center">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleCommentClick(post.id)}
+                    className="hover:text-primary p-0 mr-1"
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                  </Button>
+
+                  <Dialog 
+                    open={activeCommentsPost === post.id} 
+                    onOpenChange={(open) => setActiveCommentsPost(open ? post.id : null)}
+                  >
+                    <DialogTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="hover:text-primary p-0"
+                      >
+                        {post.comments}
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Comments</DialogTitle>
+                      </DialogHeader>
+                      <ScrollArea className="h-[400px] pr-4">
+                        <div className="space-y-4">
+                          {post.commentsList.map((comment) => (
+                            <div key={comment.id} className="space-y-2">
+                              <div className="flex items-center gap-3">
+                                <Avatar className="h-8 w-8">
+                                  <img src={comment.user.avatar} alt={comment.user.username} />
+                                </Avatar>
+                                <div className="flex-1">
+                                  <p className="font-medium">{comment.user.username}</p>
+                                  <p className="text-xs text-muted-foreground">{comment.createdAt}</p>
+                                </div>
+                              </div>
+                              <p className="text-sm pl-11">{comment.content}</p>
+                              <Separator className="mt-4" />
+                            </div>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                      <div className="flex items-center mt-4">
+                        <Input
+                          placeholder="Add a comment..."
+                          value={newComment}
+                          onChange={(e) => setNewComment(e.target.value)}
+                          className="flex-1"
+                        />
+                        <Button
+                          onClick={() => handleCommentSubmit(post.id)}
+                          className="ml-2"
+                        >
+                          Post
+                        </Button>
                       </div>
-                    </ScrollArea>
-                    {/* <div className="flex items-center gap-2 pt-4">
-                      <Input placeholder="Write a comment..." />
-                      <Button>Post</Button>
-                    </div> */}
+                    </DialogContent>
+                  </Dialog>
+                </div>
+
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button variant="ghost" size="sm" className="hover:text-primary">
+                      <Repeat className="h-4 w-4" />
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                      <DialogTitle>Share Post</DialogTitle>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                      <div className="flex items-center gap-4">
+                        <Button 
+                          variant="outline" 
+                          className="w-full"
+                          onClick={() => {
+                            navigator.clipboard.writeText(`${window.location.origin}/post/${post.id}`);
+                            toast.success('Link copied to clipboard!');
+                          }}
+                        >
+                          <Copy className="h-4 w-4 mr-2" />
+                          Copy Link
+                        </Button>
+                        {navigator.share && (
+                          <Button 
+                            variant="outline" 
+                            className="w-full"
+                            onClick={() => handleShare(post.id)}
+                          >
+                            <Repeat className="h-4 w-4 mr-2" />
+                            Share
+                          </Button>
+                        )}
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <div className="flex-1">
+                          <Input 
+                            readOnly 
+                            value={`${window.location.origin}/post/${post.id}`}
+                            className="h-9"
+                          />
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            navigator.clipboard.writeText(`${window.location.origin}/post/${post.id}`);
+                            toast.success('Link copied!');
+                          }}
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
                   </DialogContent>
                 </Dialog>
-
-                <Button variant="ghost" size="sm" className="hover:text-primary">
-                  <Repeat className="h-4 w-4 mr-2" />
-                </Button>
               </div>
             </Card>
           ))}

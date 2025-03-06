@@ -149,12 +149,10 @@ export default function NotificationsPage() {
       </div>
       
       <Tabs defaultValue="all" value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="w-full grid grid-cols-4 h-12">
-          <TabsTrigger value="all" className="hover-scale">All</TabsTrigger>
-          <TabsTrigger value="unread" className="hover-scale">Unread</TabsTrigger>
-          {/* <TabsTrigger value="like" className="hover-scale">Likes</TabsTrigger>
-          <TabsTrigger value="comment" className="hover-scale">Comments</TabsTrigger> */}
-        </TabsList>
+            <TabsList className="w-full grid grid-cols-2 h-12">
+        <TabsTrigger value="all" className="hover-scale">All</TabsTrigger>
+        <TabsTrigger value="unread" className="hover-scale">Unread</TabsTrigger>
+            </TabsList> 
         
         <TabsContent value={activeTab} className="space-y-4">
           {filteredNotifications.length > 0 ? (
