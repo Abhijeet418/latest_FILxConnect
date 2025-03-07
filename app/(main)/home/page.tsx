@@ -20,6 +20,8 @@ import { toast } from 'sonner';
 import { apiRequest } from '@/app/apiconnector/api';
 import { title } from 'node:process';
 
+const DEFAULT_URL = 'https://res.cloudinary.com/djvat4mcp/image/upload/v1741243252/n4zfkrf62br7io8d2k0c.png';
+
 // First, add these interfaces at the top of your file
 interface Comment {
   id: number;
@@ -47,7 +49,7 @@ export default function HomePage() {
 
   const [newPost, setNewPost] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [profilePicture, setProfilePicture] = useState<string>("https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=100&auto=format&fit=crop");
+  const [profilePicture, setProfilePicture] = useState<string>(DEFAULT_URL);
 
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
@@ -55,9 +57,9 @@ export default function HomePage() {
   const [posts, setPosts] = useState<Post[]>([
     {
       id: 1,
-      author: 'John Doe',
+      author: 'Tridib Paul',
       avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=100&auto=format&fit=crop',
-      content: 'Excited to announce that our team has just completed a major milestone in our blockchain project! 🚀 #blockchain #innovation',
+      content: 'Excited to announce that our team has just completed a major milestone in our project! 🚀 #springboot #innovation',
       image: null,
       time: '2h ago',
       likes: 24,
@@ -83,9 +85,9 @@ export default function HomePage() {
     },
     {
       id: 2,
-      author: 'Sarah Wilson',
+      author: 'Jaspreet Singh',
       avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=100&auto=format&fit=crop',
-      content: 'Just published my latest article on Web3 development. Check it out and let me know your thoughts! 📝 #web3 #development',
+      content: 'Just deployed our website on vercel!. Check it out and let me know your thoughts! 📝 #web3 #development',
       image: 'https://images.unsplash.com/photo-1633356122102-3fe601e05bd2?q=80&w=2070&auto=format&fit=crop',
       time: '4h ago',
       likes: 42,
@@ -96,9 +98,9 @@ export default function HomePage() {
     },
     {
       id: 3,
-      author: 'Alex Johnson',
+      author: 'Joseph Paul',
       avatar: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?q=80&w=100&auto=format&fit=crop',
-      content: 'Attended an amazing conference on AI and blockchain integration today. The future is here! #AI #blockchain #technology',
+      content: 'Bitcoin price whenever I click the buy button... #funny',
       image: 'https://images.unsplash.com/photo-1591994843349-f415893b3a6b?q=80&w=2070&auto=format&fit=crop',
       time: '6h ago',
       likes: 67,
@@ -117,9 +119,19 @@ export default function HomePage() {
   const emojis = ['😀', '😂', '❤️', '👍', '🎉', '🔥', '💯', '🚀'];
 
   useEffect(() => {
-    const myprofile = localStorage.getItem("profile_picture") ?? "";
-    setProfilePicture(myprofile!);
-  }, [])
+    const fetchProfilePicture = () => {
+      const storedPicture = localStorage.getItem("profile_picture");
+      setProfilePicture(storedPicture || DEFAULT_URL);
+    };
+
+    fetchProfilePicture();
+    // Add event listener for storage changes
+    window.addEventListener('storage', fetchProfilePicture);
+
+    return () => {
+      window.removeEventListener('storage', fetchProfilePicture);
+    };
+  }, []);
 
   const handlePostSubmit = async () => {
     if (!newPost.trim() && !selectedImageFile) return;
@@ -342,7 +354,14 @@ return (
     <Card className="p-4 mb-6 shadow-md hover-scale transition-all">
       <div className="flex gap-4">
         <Avatar className="w-10 h-10">
-          <img src={profilePicture} alt="Profile" />
+          <img 
+            src={profilePicture} 
+            alt="Profile" 
+            onError={(e) => {
+              const img = e.target as HTMLImageElement;
+              img.src = DEFAULT_URL;
+            }}
+          />
         </Avatar>
         <div className="flex-1">
           <Textarea
@@ -397,7 +416,7 @@ return (
                   className="hover-scale"
                 >
                   <Smile className="w-4 h-4 mr-2 text-primary" />
-                  Feeling
+                  
                 </Button>
 
                 {showEmojiPicker && (

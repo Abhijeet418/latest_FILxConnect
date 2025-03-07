@@ -59,6 +59,7 @@ interface Post {
   likedBy: Reaction[];
   comments: number;
   commentsList: Comment[];
+  mediaUrls?: string[]; // Add this field
 }
   
 const emojiMap: { [key: string]: keyof ReactionCounts } = {
@@ -150,6 +151,7 @@ export default function ProfilePage() {
       
       // Filter posts with status "1" before processing
       const activePosts = rawPosts.filter((post: any) => post.status === "1");
+      console.log(activePosts, 'activePosts');
   
       // Then update the post object creation in fetchUserPosts
       const enrichedPosts: Post[] = await Promise.all(activePosts.map(async (post: any) => {
@@ -187,7 +189,8 @@ export default function ProfilePage() {
             reactions: likedBy.length,
             comments: formattedComments.length,
             commentsList: formattedComments,
-            likedBy: likedBy
+            likedBy: likedBy,
+            mediaUrls: post.mediaUrls || [] // Add this line
           };
   
         } catch (error) {
@@ -203,7 +206,7 @@ export default function ProfilePage() {
           };
         }
       }));
-  
+      
       setPosts(enrichedPosts);
   
     } catch (error) {
@@ -216,14 +219,19 @@ export default function ProfilePage() {
   const fetchPostCount = async () => {
     try{
       let userId = localStorage.getItem('userId') || "404";
-      const postCount = await apiRequest(`posts/user/${userId}/count`) || 0;
+      // const postCount = await apiRequest(`posts/user/${userId}/count`) || 0;
+      // let userId = localStorage.getItem('userId') || "404";
+      const rawPosts = await apiRequest(`posts/user/${userId}`) || [];
+      
+      // Filter posts with status "1" before processing
+      const activePosts = rawPosts.filter((post: any) => post.status === "1");
       const reportCountRes = await apiRequest(`users/${userId}`) || null;
     
       setUserProfile(prev => ({
         ...prev,
         stats: {
           ...prev.stats,
-          posts: Number(postCount),
+          posts: Number(activePosts.length),
           reports: Number(reportCountRes.reports)
         }
       }));
@@ -687,6 +695,30 @@ export default function ProfilePage() {
               {/* Post Content */}
               <p className="mb-4">{post.content}</p>
 
+              {/* Media Content */}
+              {post.mediaUrls && post.mediaUrls.length > 0 && (
+                <div className="mb-4 grid gap-2">
+                  {post.mediaUrls.length === 1 ? (
+                    <img
+                      src={post.mediaUrls[0]}
+                      alt="Post media"
+                      className="rounded-lg w-full object-cover max-h-[512px]"
+                    />
+                  ) : (
+                    <div className={`grid grid-cols-${Math.min(post.mediaUrls.length, 2)} gap-2`}>
+                      {post.mediaUrls.map((url, index) => (
+                        <img
+                          key={index}
+                          src={url}
+                          alt={`Post media ${index + 1}`}
+                          className="rounded-lg w-full object-cover h-[250px]"
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Hashtags */}
               <div className="flex gap-2 mb-4">
                 {post.content.split(' ')
@@ -751,15 +783,6 @@ export default function ProfilePage() {
                 </div>
 
                 <div className="flex items-center">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleCommentClick(post.id)}
-                    className="hover:text-primary p-0 mr-1"
-                  >
-                    <MessageCircle className="h-4 w-4" />
-                  </Button>
-
                   <Dialog 
                     open={activeCommentsPost === post.id} 
                     onOpenChange={(open) => setActiveCommentsPost(open ? post.id : null)}
@@ -768,9 +791,10 @@ export default function ProfilePage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="hover:text-primary p-0"
+                        className="hover:text-primary p-0 flex items-center gap-1"
                       >
-                        {post.comments}
+                        <MessageCircle className="h-4 w-4" />
+                        <span>{post.comments}</span>
                       </Button>
                     </DialogTrigger>
                     <DialogContent>

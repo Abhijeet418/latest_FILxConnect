@@ -2,7 +2,7 @@
 
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
-import { Share2, Home, Bell, MessageCircle, User, LogOut, Menu, Search, Check, UserPlus, PenSquare, Clock, CheckCircle, XCircle, List, SearchIcon } from 'lucide-react';
+import { Share2, Home, Bell, MessageCircle, User, LogOut, Menu, Search, Check, UserPlus, PenSquare, Clock, CheckCircle, XCircle, List, SearchIcon, Heart } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
@@ -30,6 +30,8 @@ import { apiRequest } from '../apiconnector/api';
 import { auth } from '@/lib/Firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { set } from 'zod';
+import { toast } from 'react-toastify';
+// import { timeAgo } from '@/utils/timeAgo';
 
 interface SuggestedUser {
   id: number;
@@ -46,6 +48,95 @@ interface Connection {
   status: 'online' | 'offline';
 }
 const DEFAULT_AVATAR = 'https://res.cloudinary.com/djvat4mcp/image/upload/v1741243252/n4zfkrf62br7io8d2k0c.png';
+
+// Add this mock data at the top of your file after the interfaces
+const mockPosts = {
+  pending: [
+    {
+      id: 1,
+      content: "Excited to share my thoughts on the new microservices architecture!",
+      time: "2 hours ago",
+      status: "pending"
+    },
+    {
+      id: 2,
+      content: "Just completed my certification in Cloud Computing! #AWS #Learning",
+      time: "5 hours ago",
+      status: "pending"
+    }
+  ],
+  approved: [
+    {
+      id: 3,
+      content: "Great team meeting today discussing upcoming projects! #TeamWork",
+      time: "1 day ago",
+      status: "approved",
+      likes: 15,
+      comments: 5
+    },
+    {
+      id: 4,
+      content: "Happy to announce that our project launched successfully! #Success",
+      time: "2 days ago",
+      status: "approved",
+      likes: 25,
+      comments: 8
+    }
+  ],
+  rejected: [
+    {
+      id: 5,
+      content: "This post was rejected due to content guidelines",
+      time: "3 days ago",
+      status: "rejected",
+      reason: "Contains sensitive information"
+    }
+  ]
+};
+export function timeAgo(dateString: string) {
+  try {
+    if (!dateString) {
+      return 'Just now';
+    }
+
+    const date = new Date(dateString);
+    
+    if (isNaN(date.getTime())) {
+      console.error('Invalid date:', dateString);
+      return 'Just now';
+    }
+
+    const now = new Date();
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+    // Handle future dates
+    if (seconds < 0) {
+      return 'Just now';
+    }
+
+    const intervals = {
+      year: 31536000,
+      month: 2592000,
+      week: 604800,
+      day: 86400,
+      hour: 3600,
+      minute: 60,
+      second: 1
+    };
+
+    for (const [unit, secondsInUnit] of Object.entries(intervals)) {
+      const interval = Math.floor(seconds / secondsInUnit);
+      if (interval >= 1) {
+        return `${interval} ${unit}${interval === 1 ? '' : 's'} ago`;
+      }
+    }
+
+    return 'Just now';
+  } catch (error) {
+    console.error('Error parsing date:', error);
+    return 'Just now';
+  }
+}
 
 export default function MainLayout({
   children,
@@ -93,6 +184,7 @@ export default function MainLayout({
     avatar: string;
     title: string;
   }>>([]);
+  const [userPosts, setUserPosts] = useState<any[]>([]);
 
   const navigation = [
     { name: 'Home', href: '/home', icon: Home, notifications: 0 },
@@ -150,10 +242,11 @@ export default function MainLayout({
       if (user) {
         let userId = localStorage.getItem('userId') || "404";
         const User = await apiRequest(`users/${userId}`, 'GET') || {};
+        console.log(User,user, "is the user");
         setCurrentUser({
           username: User.username || 'Loading...',
           email: User.email || 'Loading...',
-          photoURL: user.photoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=100&auto=format&fit=crop',
+          photoURL: user.photoURL || DEFAULT_AVATAR
         });
       }
     });
@@ -166,6 +259,56 @@ export default function MainLayout({
       unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        let userId = localStorage.getItem('userId') || "404";
+        const userResponse = await apiRequest(`users/${userId}`, 'GET') || {};
+        
+        // Get profile picture from localStorage first, then fallback to API response
+        const profilePicture = localStorage.getItem("profile_picture") || 
+                             userResponse.profilePicture || 
+                             DEFAULT_AVATAR;
+  
+        setCurrentUser({
+          username: userResponse.username || user.email?.split('@')[0] || 'User',
+          email: userResponse.email || user.email || '',
+          photoURL: profilePicture // Use the updated profile picture
+        });
+      }
+    });
+  
+    return () => unsubscribe();
+  }, []);
+
+  const fetchUserPosts = async () => {
+    try {
+      const userId = localStorage.getItem('userId') || "404";
+      const posts = await apiRequest(`posts/user/${userId}`, 'GET') || [];
+  
+      const allPosts = posts.map((post: any) => ({
+        id: post.id,
+        content: post.content,
+        time: timeAgo(post.createdAt),
+        status: post.status,
+        likes: post.likeCount || 0,
+        comments: post.commentCount || 0,
+        reason: "Your post was reported.."
+      }));
+  
+      setUserPosts(allPosts);
+    } catch (error) {
+      console.error('Error fetching posts:', error);
+      toast.error('Failed to fetch posts');
+    }
+  };
+  
+  useEffect(() => {
+    if (isPostModalOpen) {
+      fetchUserPosts();
+    }
+  }, [isPostModalOpen]);
 
   const showSidebars = !pathname?.includes('/landing');
 
@@ -218,7 +361,7 @@ export default function MainLayout({
                       <div className="flex flex-col h-full">
                         <div className="flex items-center gap-4 p-4 border-b">
                           <Avatar className="h-10 w-10">
-                            <img src={DEFAULT_AVATAR} alt="User" />
+                            <img src={currentUser.photoURL} alt="User" />
                           </Avatar>
                           <div>
                             <h3 className="font-medium">{currentUser.username}</h3>
@@ -304,7 +447,11 @@ export default function MainLayout({
           {/* Replace the existing sidebar user section */}
           <div className="flex items-center gap-3 mb-4 p-2">
             <Avatar className="h-10 w-10">
-              <img src={DEFAULT_AVATAR} alt={currentUser.username} />
+              <img 
+                src={currentUser.photoURL || DEFAULT_AVATAR} 
+                alt={currentUser.username}
+                className="object-cover"
+              />
             </Avatar>
             <div>
               <h3 className="font-medium">{currentUser.username}</h3>
@@ -647,125 +794,212 @@ export default function MainLayout({
       </Dialog>
 
       <Dialog open={isPostModalOpen} onOpenChange={setIsPostModalOpen}>
-        <DialogContent className="max-w-4xl h-[80vh] overflow-hidden flex flex-col">
-          <DialogHeader>
+        <DialogContent className="max-w-4xl h-[80vh] flex flex-col p-0">
+          <DialogHeader className="p-6 pb-0">
             <DialogTitle className="text-2xl font-bold mb-4">My Posts</DialogTitle>
             <Tabs defaultValue="pending" className="w-full">
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="pending" className="flex items-center gap-2">
+              <TabsList className="w-full flex overflow-x-auto scrollbar-hide">
+                <TabsTrigger value="pending" className="flex-1 flex items-center gap-2 min-w-[120px]">
                   <Clock className="h-4 w-4" />
                   Pending
                 </TabsTrigger>
-                <TabsTrigger value="approved" className="flex items-center gap-2">
+                <TabsTrigger value="approved" className="flex-1 flex items-center gap-2 min-w-[120px]">
                   <CheckCircle className="h-4 w-4" />
                   Approved
                 </TabsTrigger>
-                <TabsTrigger value="rejected" className="flex items-center gap-2">
+                <TabsTrigger value="rejected" className="flex-1 flex items-center gap-2 min-w-[120px]">
                   <XCircle className="h-4 w-4" />
                   Rejected
                 </TabsTrigger>
-                <TabsTrigger value="all" className="flex items-center gap-2">
+                <TabsTrigger value="all" className="flex-1 flex items-center gap-2 min-w-[120px]">
                   <List className="h-4 w-4" />
                   All Posts
                 </TabsTrigger>
               </TabsList>
+              
+              <div className="overflow-y-auto max-h-[calc(80vh-180px)] p-6">
+                <TabsContent value="pending" className="mt-4">
+                  <div className="space-y-4">
+                    {userPosts.filter(post => post.status === "3").length > 0 ? (
+                      userPosts
+                        .filter(post => post.status === "3")
+                        .map((post) => (
+                          <Card key={post.id} className="p-4">
+                            <div className="flex justify-between items-start mb-2">
+                              <p className="text-sm text-muted-foreground">{post.time}</p>
+                              <Badge variant="outline" className="bg-yellow-50">Pending Review</Badge>
+                            </div>
+                            <p className="mb-4">{post.content}</p>
+                          </Card>
+                        ))
+                    ) : (
+                      <Card className="p-4">
+                        <p className="text-muted-foreground">No pending posts</p>
+                      </Card>
+                    )}
+                  </div>
+                </TabsContent>
 
-              <TabsContent value="pending" className="flex-1 overflow-y-auto mt-4">
-                <div className="space-y-4">
-                  {/* Pending posts will go here */}
-                  <Card className="p-4">
-                    <p className="text-muted-foreground">No pending posts</p>
-                  </Card>
-                </div>
-              </TabsContent>
+                <TabsContent value="approved" className="mt-4">
+                  <div className="space-y-4">
+                    {userPosts.filter(post => post.status === "1").length > 0 ? (
+                      userPosts
+                        .filter(post => post.status === "1")
+                        .map((post) => (
+                          <Card key={post.id} className="p-4">
+                            <div className="flex justify-between items-start mb-2">
+                              <p className="text-sm text-muted-foreground">{post.time}</p>
+                              <Badge variant="outline" className="bg-green-50 text-green-600">Approved</Badge>
+                            </div>
+                            <p className="mb-4">{post.content}</p>
+                            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <Heart className="h-4 w-4" /> {post.likes}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <MessageCircle className="h-4 w-4" /> {post.comments}
+                              </span>
+                            </div>
+                          </Card>
+                        ))
+                    ) : (
+                      <Card className="p-4">
+                        <p className="text-muted-foreground">No approved posts</p>
+                      </Card>
+                    )}
+                  </div>
+                </TabsContent>
 
-              <TabsContent value="approved" className="flex-1 overflow-y-auto mt-4">
-                <div className="space-y-4">
-                  {/* Approved posts will go here */}
-                  <Card className="p-4">
-                    <p className="text-muted-foreground">No approved posts</p>
-                  </Card>
-                </div>
-              </TabsContent>
+                <TabsContent value="rejected" className="mt-4">
+                  <div className="space-y-4">
+                    {userPosts.filter(post => post.status === "0").length > 0 ? (
+                      userPosts
+                        .filter(post => post.status === "0")
+                        .map((post) => (
+                          <Card key={post.id} className="p-4">
+                            <div className="flex justify-between items-start mb-2">
+                              <p className="text-sm text-muted-foreground">{post.time}</p>
+                              <Badge variant="destructive">Rejected</Badge>
+                            </div>
+                            <p className="mb-4">{post.content}</p>
+                            {post.reason && (
+                              <p className="text-sm text-destructive">Reason: {post.reason}</p>
+                            )}
+                          </Card>
+                        ))
+                    ) : (
+                      <Card className="p-4">
+                        <p className="text-muted-foreground">No rejected posts</p>
+                      </Card>
+                    )}
+                  </div>
+                </TabsContent>
 
-              <TabsContent value="rejected" className="flex-1 overflow-y-auto mt-4">
-                <div className="space-y-4">
-                  {/* Rejected posts will go here */}
-                  <Card className="p-4">
-                    <p className="text-muted-foreground">No rejected posts</p>
-                  </Card>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="all" className="flex-1 overflow-y-auto mt-4">
-                <div className="space-y-4">
-                  {/* All posts will go here */}
-                  <Card className="p-4">
-                    <p className="text-muted-foreground">No posts found</p>
-                  </Card>
-                </div>
-              </TabsContent>
+                <TabsContent value="all" className="mt-4">
+                  <div className="space-y-4">
+                    {userPosts.length > 0 ? (
+                      userPosts.map((post) => (
+                        <Card key={post.id} className="p-4">
+                          <div className="flex justify-between items-start mb-2">
+                            <p className="text-sm text-muted-foreground">{post.time}</p>
+                            <Badge 
+                              variant={
+                                post.status === "1" ? 'outline' : 
+                                post.status === "0" ? 'destructive' : 
+                                'secondary'
+                              }
+                              className={post.status === "1" ? 'bg-green-50 text-green-600' : ''}
+                            >
+                              {post.status === "1" ? "Approved" : 
+                               post.status === "0" ? "Rejected" : 
+                               "Pending"}
+                            </Badge>
+                          </div>
+                          <p className="mb-4">{post.content}</p>
+                          {post.status === "1" && (
+                            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <Heart className="h-4 w-4" /> {post.likes}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <MessageCircle className="h-4 w-4" /> {post.comments}
+                              </span>
+                            </div>
+                          )}
+                          {post.status === "0" && post.reason && (
+                            <p className="text-sm text-destructive">Reason: {post.reason}</p>
+                          )}
+                        </Card>
+                      ))
+                    ) : (
+                      <Card className="p-4">
+                        <p className="text-muted-foreground">No posts found</p>
+                      </Card>
+                    )}
+                  </div>
+                </TabsContent>
+              </div>
             </Tabs>
           </DialogHeader>
-
-          <div className="mt-auto pt-4 flex justify-end">
-            <Button onClick={() => setIsPostModalOpen(false)}>Close</Button>
-          </div>
         </DialogContent>
       </Dialog>
 
-      {/* Search Dialog */}
       <Dialog open={isSearchDialogOpen} onOpenChange={setIsSearchDialogOpen}>
-        <DialogContent className="max-w-3xl h-[80vh] overflow-hidden flex flex-col">
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-bold mb-4">Search connections</DialogTitle>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="search"
-                placeholder="Search by name, username, or role..."
-                className="w-full pl-10 bg-muted/50"
-                onChange={(e) => {
-                  // Here you would typically make an API call to search users
-                  const query = e.target.value.toLowerCase();
-                  const filtered = allSuggestedUsers.filter(user =>
-                    user.username.toLowerCase().includes(query) ||
-                    user.username.toLowerCase().includes(query) ||
-                    user.title.toLowerCase().includes(query)
-                  ).map(user => ({
-                    ...user,
-                    id: String(user.id)
-                  }));
-                  // setSearchResults(filtered);
-                }}
-              />
-            </div>
+            <DialogTitle className="text-2xl font-bold">
+              Search Connections
+            </DialogTitle>
           </DialogHeader>
 
-          <div className="flex-1 overflow-y-auto mt-6 custom-scrollbar">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pr-4">
-              {searchResults.map((user) => (
-                <Card key={user.id} className="p-4 hover:shadow-md transition-all">
-                  <div className="flex items-center gap-4">
-                    <Avatar className="h-12 w-12">
-                      <img src={user.avatar} alt={user.username} className="object-cover" />
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{user.username}</p>
-                      <p className="text-sm text-muted-foreground truncate">{user.title}</p>
-                      <p className="text-xs text-muted-foreground truncate">{user.username}</p>
+          <div className="relative my-4">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Search connections..."
+              className="w-full pl-10 bg-muted/50"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+
+          <div className="flex-1 overflow-y-auto pr-2">
+            <div className="space-y-3">
+              {searchResults
+                .filter(result =>
+                  result.username.toLowerCase().includes(searchQuery.toLowerCase())
+                )
+                .map((result) => (
+                  <div
+                    key={result.id}
+                    className="flex items-center gap-4 p-3 rounded-lg hover:bg-muted transition-all duration-200"
+                  >
+                    <div className="relative">
+                      <Avatar className="h-12 w-12">
+                        <img src={result.avatar} alt={result.username} />
+                      </Avatar>
+                      <span
+                        className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background ${result.status === 'online' ? 'bg-green-500' : 'bg-gray-400'
+                          }`}
+                      />
                     </div>
+
+                    <div className="flex-1">
+                      <h4 className="font-medium">{result.username}</h4>
+                      <p className="text-sm text-muted-foreground">
+                        {result.status === 'online' ? 'Active now' : 'Offline'}
+                      </p>
+                    </div>
+
                     <Button
+                      variant="ghost"
                       size="sm"
-                      variant="outline"
-                      className="hover:bg-primary/10"
+                      className="hover:bg-primary/10 hover:text-primary"
                     >
-                      <UserPlus className="h-4 w-4 mr-2" />
-                      Connect
+                      <MessageCircle className="h-4 w-4" />
                     </Button>
                   </div>
-                </Card>
-              ))}
+                ))}
             </div>
           </div>
         </DialogContent>

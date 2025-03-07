@@ -16,7 +16,7 @@ export default function Landing() {
     };
 
     const stats = [
-        { number: '28', label: 'Active Users' },
+        { number: '100+', label: 'Active Users' },
         // { number: '50+', label: 'Countries' },
         { number: '99.9%', label: 'Uptime' },
         { number: 'FIL GGN', label: 'Exclusive' },
@@ -29,6 +29,10 @@ export default function Landing() {
         { title: 'Instant Messaging', description: 'Quick and efficient communication', icon: <MessageSquare className="h-6 w-6" /> },
         { title: 'Enterprise Security', description: 'Your data is safe with us', icon: <Shield className="h-6 w-6" /> },
     ];
+
+    const handleAdminLogin = () => {
+        window.location.href = 'http://localhost:3000';
+      };
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100">
@@ -65,9 +69,9 @@ export default function Landing() {
                                 <button onClick={()=>router.push("/signup")} className="bg-blue-100 text-blue-600 px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-200 transition-colors">
                                     User Signup
                                 </button>
-                                <button className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors">
-                  Admin Login
-                </button>
+                                <button onClick={handleAdminLogin} className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors">
+                                Admin Login
+                                </button>
                             </div>
 
                             {/* Mobile Menu Button */}
@@ -372,10 +376,18 @@ export default function Landing() {
                                     >
                                         <div className="text-white text-center p-4">
                                             <p className="font-semibold">
-                                                {index === 2 ? "Aarnab Dutta" : index === 1 ? "Sanskar Sisodia" : "John Doe"}
+                                                {index === 0 ? "Divyansh Goyal" : 
+                                                 index === 1 ? "Sanskar Sisodia" : 
+                                                 index === 2 ? "Aarnab Dutta" :
+                                                 index === 3 ? "Asmitha Bhavya" :
+                                                 index === 4 ? "Abhijeet Chatterjee" : "Team Member"}
                                             </p>
                                             <p className="text-sm">
-                                                {index === 2 ? "Team Lead & Frontend Developer" : index === 1 ? "User Backend Developer" : "Product Lead"}
+                                                {index === 0 ? "Database/Project Manager" : 
+                                                 index === 1 ? "Backend, Testing & Deployment" : 
+                                                 index === 2 ? "Team Lead & Frontend Developer" :
+                                                 index === 3 ? "Frontend Developer" :
+                                                 index === 4 ? "Backend & Integration" : "Role"}
                                             </p>
                                         </div>
                                     </motion.div>
