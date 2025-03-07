@@ -22,7 +22,7 @@ import { onAuthStateChanged, updateProfile } from 'firebase/auth';
 import { apiRequest } from '@/app/apiconnector/api';
 import { Badge } from '@/components/ui/badge';
 
-const DEFAULT_AVATAR = 'https://res.cloudinary.com/djvat4mcp/image/upload/v1741243252/n4zfkrf62br7io8d2k0c.png';
+const DEFAULT_AVATAR = "https://res.cloudinary.com/djvat4mcp/image/upload/v1741357526/zybt9ffewrjwhq7tyvy1.png";
 
 interface Reaction {
   id: string;
@@ -34,13 +34,7 @@ interface Reaction {
   createdAt: string;
 }
 
-interface ReactionCounts {
-  '👍': number;
-  '❤️': number;
-  '😆': number;
-  '😢': number;
-  '😡': number;
-}
+
 interface Comment {
   id: string;
   user: {
@@ -51,24 +45,24 @@ interface Comment {
   createdAt: string;
 }
 
+interface Media {
+  id: string;
+  mediaUrl: string;
+  mediaType: string;
+  postId: string;
+}
+
+// Update the Post interface to include the proper media type
 interface Post {
-  id: string | number;
+  id: string;
   content: string;
   time: string;
   reactions: number;
   likedBy: Reaction[];
   comments: number;
   commentsList: Comment[];
-  mediaUrls?: string[]; // Add this field
+  mediaUrls: Media[]; // Change this to store the full media objects
 }
-  
-const emojiMap: { [key: string]: keyof ReactionCounts } = {
-  'ƒÄë': '👍',
-  'ƒöÑ': '❤️',
-  'ƒÆ»': '😆',
-  'ƒüõ': '😢',
-  'ƒÉ£': '😡'
-};
 
 // First, fix the timeAgo function to handle the specific date format
 function timeAgo(dateString: string) {
@@ -140,8 +134,8 @@ export default function ProfilePage() {
   });
   const [posts, setPosts] = useState<Post[]>([]);
 
-  const [activeLikesPost, setActiveLikesPost] = useState<number | null>(null);
-  const [activeCommentsPost, setActiveCommentsPost] = useState<number | null>(null);
+  const [activeLikesPost, setActiveLikesPost] = useState<string | null>(null);
+  const [activeCommentsPost, setActiveCommentsPost] = useState<string | null>(null);
   const [newComment, setNewComment] = useState('');
 
   const fetchUserPosts = async () => {
@@ -180,6 +174,10 @@ export default function ProfilePage() {
             content: comment.content,
             createdAt: new Date(comment.createdAt).toLocaleString()
           }));
+
+          // Add media fetch
+          const mediaResponse = await apiRequest(`media/${post.id}`, 'GET') || [];
+          const mediaList: Media[] = Array.isArray(mediaResponse) ? mediaResponse : [];
   
           // Return formatted post object
           return {
@@ -190,7 +188,7 @@ export default function ProfilePage() {
             comments: formattedComments.length,
             commentsList: formattedComments,
             likedBy: likedBy,
-            mediaUrls: post.mediaUrls || [] // Add this line
+            mediaUrls: mediaList // Store the full media objects
           };
   
         } catch (error) {
@@ -206,6 +204,20 @@ export default function ProfilePage() {
           };
         }
       }));
+      
+      // // Sort posts by createdAt in descending order
+      // const sortedPosts = enrichedPosts.sort((a, b) => {
+      //   // Find original posts to get createdAt values
+      //   const postA = activePosts.find(p => p.id === a.id);
+      //   const postB = activePosts.find(p => p.id === b.id);
+        
+      //   // Convert dates to timestamps for comparison
+      //   const timeA = new Date(postA?.createdAt || 0).getTime();
+      //   const timeB = new Date(postB?.createdAt || 0).getTime();
+        
+      //   // Sort in descending order (newest first)
+      //   return timeB - timeA;
+      // });
       
       setPosts(enrichedPosts);
   
@@ -366,7 +378,7 @@ export default function ProfilePage() {
       // Update local state
       setUserProfile(prev => ({
         ...prev,
-        avatar: data.secure_url
+        profilepic: data.secure_url
       }));
 
       toast.success('Profile photo updated successfully');
@@ -400,12 +412,12 @@ export default function ProfilePage() {
     }
   };
 
-  const handleLikeClick = async (postId: number) => {
+  const handleLikeClick = async (postId: string) => {
     try {
       let userId = localStorage.getItem('userId') || "404";
       
       // Check if user already liked the post
-      const currentPost = posts.find(p => p.id === postId);
+      const currentPost = posts.find(p => p.id === postId.toString());
       const hasLiked = currentPost?.likedBy.some(like => like.user.username === userProfile.name);
   
       if (hasLiked) {
@@ -416,7 +428,7 @@ export default function ProfilePage() {
           // Update state to remove the like
           setPosts(prevPosts => 
             prevPosts.map(post => {
-              if (post.id === postId) {
+              if (post.id === postId.toString()) {
                 return {
                   ...post,
                   reactions: post.reactions - 1,
@@ -466,11 +478,11 @@ export default function ProfilePage() {
     }
   };
 
-  const handleCommentClick = async (postId: number) => {
+  const handleCommentClick = async (postId: string) => {
     setActiveCommentsPost(postId);
   };
 
-  const handleCommentSubmit = async (postId: number) => {
+  const handleCommentSubmit = async (postId: string) => {
     try {
       if (!newComment.trim()) {
         toast.error('Please enter a comment');
@@ -514,7 +526,7 @@ export default function ProfilePage() {
     }
   };
 
-  const handleShare = async (postId: number) => {
+  const handleShare = async (postId: string) => {
     try {
       const shareUrl = `${window.location.origin}/post/${postId}`;
       
@@ -543,7 +555,7 @@ export default function ProfilePage() {
           <div className="relative mb-6 md:mb-0">
             <Avatar className="w-40 h-40 border-4 border-background shadow-xl hover:scale-105 transition-transform duration-200">
               <img
-                src={userProfile.avatar}
+                src={userProfile.profilepic}
                 alt={userProfile.name}
                 className="object-cover"
               />
@@ -697,25 +709,28 @@ export default function ProfilePage() {
 
               {/* Media Content */}
               {post.mediaUrls && post.mediaUrls.length > 0 && (
-                <div className="mb-4 grid gap-2">
-                  {post.mediaUrls.length === 1 ? (
-                    <img
-                      src={post.mediaUrls[0]}
-                      alt="Post media"
-                      className="rounded-lg w-full object-cover max-h-[512px]"
-                    />
-                  ) : (
-                    <div className={`grid grid-cols-${Math.min(post.mediaUrls.length, 2)} gap-2`}>
-                      {post.mediaUrls.map((url, index) => (
+                <div className="mb-4">
+                  <div className={`grid ${
+                    post.mediaUrls.length === 1 ? 'grid-cols-1' : 
+                    post.mediaUrls.length === 2 ? 'grid-cols-2' :
+                    post.mediaUrls.length === 3 ? 'grid-cols-2' :
+                    'grid-cols-2'
+                  } gap-2`}>
+                    {post.mediaUrls.map((media, index) => (
+                      <div 
+                        key={media.id}
+                        className={`${
+                          post.mediaUrls.length === 3 && index === 0 ? 'col-span-2' : ''
+                        }`}
+                      >
                         <img
-                          key={index}
-                          src={url}
+                          src={media.mediaUrl}
                           alt={`Post media ${index + 1}`}
                           className="rounded-lg w-full object-cover h-[250px]"
                         />
-                      ))}
-                    </div>
-                  )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -861,7 +876,7 @@ export default function ProfilePage() {
                           <Copy className="h-4 w-4 mr-2" />
                           Copy Link
                         </Button>
-                        {navigator.share && (
+                        {typeof navigator.share === 'function' && (
                           <Button 
                             variant="outline" 
                             className="w-full"

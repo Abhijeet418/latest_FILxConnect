@@ -47,52 +47,8 @@ interface Connection {
   profilePicture: string;
   status: 'online' | 'offline';
 }
-const DEFAULT_AVATAR = 'https://res.cloudinary.com/djvat4mcp/image/upload/v1741243252/n4zfkrf62br7io8d2k0c.png';
+const DEFAULT_AVATAR = "https://res.cloudinary.com/djvat4mcp/image/upload/v1741357526/zybt9ffewrjwhq7tyvy1.png";
 
-// Add this mock data at the top of your file after the interfaces
-const mockPosts = {
-  pending: [
-    {
-      id: 1,
-      content: "Excited to share my thoughts on the new microservices architecture!",
-      time: "2 hours ago",
-      status: "pending"
-    },
-    {
-      id: 2,
-      content: "Just completed my certification in Cloud Computing! #AWS #Learning",
-      time: "5 hours ago",
-      status: "pending"
-    }
-  ],
-  approved: [
-    {
-      id: 3,
-      content: "Great team meeting today discussing upcoming projects! #TeamWork",
-      time: "1 day ago",
-      status: "approved",
-      likes: 15,
-      comments: 5
-    },
-    {
-      id: 4,
-      content: "Happy to announce that our project launched successfully! #Success",
-      time: "2 days ago",
-      status: "approved",
-      likes: 25,
-      comments: 8
-    }
-  ],
-  rejected: [
-    {
-      id: 5,
-      content: "This post was rejected due to content guidelines",
-      time: "3 days ago",
-      status: "rejected",
-      reason: "Contains sensitive information"
-    }
-  ]
-};
 export function timeAgo(dateString: string) {
   try {
     if (!dateString) {
@@ -502,15 +458,9 @@ export default function MainLayout({
                   href={`/profile/${connection.id}`}
                   className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted transition-colors group"
                 >
-                  <div className="relative">
-                    <Avatar className="h-8 w-8">
-                      <img src={DEFAULT_AVATAR} alt={connection.username} />
-                    </Avatar>
-                    <span
-                      className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-background ${connection.status === 'online' ? 'bg-green-500' : 'bg-gray-400'
-                        }`}
-                    />
-                  </div>
+                  <Avatar className="h-8 w-8">
+                    <img src={DEFAULT_AVATAR} alt={connection.username} />
+                  </Avatar>
                   <span className="text-sm font-medium truncate group-hover:text-primary transition-colors">
                     {connection.username}
                   </span>
@@ -587,21 +537,16 @@ export default function MainLayout({
                 >
                   <div className="flex items-center gap-3">
                     <Avatar className="h-10 w-10">
-                      <Image
-                        width={30}
-                        height={30}
-                        src={user.profilePicture || "https://github.com/shadcn.png"}
-                        alt={user.username}
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.src = "https://github.com/shadcn.png";
-                        }}
-                      />
+                    <img 
+                      src={user.photoURL || DEFAULT_AVATAR} 
+                      alt={user.username}
+                      className="object-cover"
+                    />
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <p className="font-medium truncate">{user.username}</p>
                       <p className="text-sm text-muted-foreground truncate">{user.bio}</p>
-                      <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                      {/* <p className="text-xs text-muted-foreground truncate">{user.email}</p> */}
                     </div>
                     <Button
                       size="sm"
@@ -611,7 +556,7 @@ export default function MainLayout({
                       onClick={() => {
                         if (!isRequestSent && !pendingRequests.includes(user.id)) {
                           let userId = localStorage.getItem('userId') || "404";
-                          sentTheConnectionReq(user.id, userId);
+                          sentTheConnectionReq(user.id.toString(), userId);
                           setPendingRequests(prev => [...prev, user.id]);
                           setTimeout(() => {
                             setPendingRequests(prev => prev.filter(id => id !== user.id));
@@ -689,17 +634,12 @@ export default function MainLayout({
                       <Avatar className="h-12 w-12">
                         <img src={DEFAULT_AVATAR} alt={connection.username} />
                       </Avatar>
-                      <span
-                        className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background ${connection.status === 'online' ? 'bg-green-500' : 'bg-gray-400'
-                          }`}
-                      />
+                      
                     </div>
 
                     <div className="flex-1">
                       <h4 className="font-medium">{connection.username}</h4>
-                      <p className="text-sm text-muted-foreground">
-                        {connection.status === 'online' ? 'Active now' : 'Offline'}
-                      </p>
+                      
                     </div>
 
                     <Button
@@ -755,8 +695,8 @@ export default function MainLayout({
                           <Image width={80} height={80} src={DEFAULT_AVATAR} alt={user.username} className="object-cover" />
                         </Avatar>
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium truncate">{user.name}</p>
-                          <p className="text-sm text-muted-foreground truncate">{user.title}</p>
+                          {/* <p className="font-medium truncate">{user.name}</p>
+                          <p className="text-sm text-muted-foreground truncate">{user.title}</p> */}
                           <p className="text-xs text-muted-foreground truncate">{user.username}</p>
                         </div>
                         <Button
@@ -767,7 +707,7 @@ export default function MainLayout({
                           onClick={() => {
                             if (!isRequestSent && !pendingRequests.includes(user.id)) {
                               let userId = localStorage.getItem('userId') || "404";
-                              sentTheConnectionReq(user.id, userId);
+                              sentTheConnectionReq(user.id.toString(), userId);
                               setPendingRequests(prev => [...prev, user.id]);
                               setTimeout(() => {
                                 setPendingRequests(prev => prev.filter(id => id !== user.id));
@@ -926,9 +866,7 @@ export default function MainLayout({
                               </span>
                             </div>
                           )}
-                          {post.status === "0" && post.reason && (
-                            <p className="text-sm text-destructive">Reason: {post.reason}</p>
-                          )}
+                          
                         </Card>
                       ))
                     ) : (
@@ -978,17 +916,10 @@ export default function MainLayout({
                       <Avatar className="h-12 w-12">
                         <img src={result.avatar} alt={result.username} />
                       </Avatar>
-                      <span
-                        className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background ${result.status === 'online' ? 'bg-green-500' : 'bg-gray-400'
-                          }`}
-                      />
                     </div>
 
                     <div className="flex-1">
                       <h4 className="font-medium">{result.username}</h4>
-                      <p className="text-sm text-muted-foreground">
-                        {result.status === 'online' ? 'Active now' : 'Offline'}
-                      </p>
                     </div>
 
                     <Button
