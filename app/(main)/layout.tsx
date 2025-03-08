@@ -37,17 +37,35 @@ interface SuggestedUser {
   id: number;
   name: string;
   username: string;
-  profilePicture: string;
-  title: string;
+  profilePicture: string;  // Make sure this matches your API response
+  bio: string;            // Added bio field as it's used in the UI
+  status: string;         // Added status field as it's used in the UI
 }
 
 interface Connection {
+  status: string;
   id: number;
   username: string;
-  profilePicture: string;
-  status: 'online' | 'offline';
+  profilePicture: string;  // Make sure this matches your API response
 }
+
+interface Notification {
+  id: string;
+  userId: string;
+  type: string;
+  content: string;
+  read: boolean;
+  createdAt: string;
+}
+
+const CLOUDINARY_BASE_URL = "https://res.cloudinary.com/djvat4mcp/image/upload/v1741357526/";
 const DEFAULT_AVATAR = "https://res.cloudinary.com/djvat4mcp/image/upload/v1741357526/zybt9ffewrjwhq7tyvy1.png";
+
+const getFullImageUrl = (profilePicture: string | null | undefined): string => {
+  if (!profilePicture) return DEFAULT_AVATAR;
+  if (profilePicture.startsWith('http')) return profilePicture;
+  return CLOUDINARY_BASE_URL + profilePicture;
+};
 
 export function timeAgo(dateString: string) {
   try {
@@ -94,6 +112,11 @@ export function timeAgo(dateString: string) {
   }
 }
 
+// Add helper function to filter out blocked users
+const filterBlockedUsers = (users: any[]) => {
+  return users.filter(user => user.status !== "0" && user.status !== 0);
+};
+
 export default function MainLayout({
   children,
 }: {
@@ -105,17 +128,23 @@ export default function MainLayout({
   const [suggestedUsers, setSuggestedUser] = useState<SuggestedUser[]>([]);
   // const [userId,setUserId] = useState("");
 
-  useEffect(() => {
+  // Add state for notification count
+  const [notificationCount, setNotificationCount] = useState(0);
 
+  useEffect(() => {
     let userId = localStorage.getItem('userId') || "404";
     const fetchSuggestedUser = async () => {
-      const res = await apiRequest(`followers/${userId}/notfollowed`, "GET");
-
-      setSuggestedUser(res);
+      try {
+        const res = await apiRequest(`followers/${userId}/notfollowed`, "GET");
+        console.log("Suggested users response:", res);
+        setSuggestedUser(res);
+      } catch (error) {
+        console.error("Error fetching suggested users:", error);
+      }
     }
 
     fetchSuggestedUser();
-  })
+  }, []); // Empty dependency array means this will only run once when component mounts
 
   const [myConnections, setMyConnections] = useState<Connection[]>([]);
 
@@ -125,8 +154,9 @@ export default function MainLayout({
     photoURL: '',
   });
 
-  const [sentRequests, setSentRequests] = useState<number[]>([]);
-  const [pendingRequests, setPendingRequests] = useState<number[]>([]);
+  // Update the state to use an object instead of array
+  const [sentRequests, setSentRequests] = useState<Record<string, boolean>>({});
+  const [pendingRequests, setPendingRequests] = useState<Record<string, boolean>>({});
   const [isConnectionsModalOpen, setIsConnectionsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSuggestionsModalOpen, setIsSuggestionsModalOpen] = useState(false);
@@ -135,19 +165,40 @@ export default function MainLayout({
   const [isSearchDialogOpen, setIsSearchDialogOpen] = useState(false);
   const [searchResults, setSearchResults] = useState<Array<{
     id: string;
-    name: string;
     username: string;
-    avatar: string;
-    title: string;
+    profilePicture: string;
+    isConnection: boolean;
   }>>([]);
   const [userPosts, setUserPosts] = useState<any[]>([]);
 
+  // Add function to fetch notification count
+  const fetchNotificationCount = async () => {
+    try {
+      const userId = localStorage.getItem('userId') || "404";
+      const response = await apiRequest(`notifications/${userId}`, 'GET');
+      
+      // Ensure notifications is always an array
+      const notifications = Array.isArray(response) ? response : [];
+      
+      const unreadCount = notifications.filter((notif: any) => 
+        // Check if notification exists and is unread
+        notif && notif.read === false
+      ).length;
+      
+      setNotificationCount(unreadCount);
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+      setNotificationCount(0);
+    }
+  };
+
+  // Update the navigation array
   const navigation = [
     { name: 'Home', href: '/home', icon: Home, notifications: 0 },
-    { name: 'Notifications', href: '/notifications', icon: Bell, notifications: 3 },
-    { name: 'Messages', href: '/messages', icon: MessageCircle, notifications: 2 },
+    { name: 'Notifications', href: '/notifications', icon: Bell, notifications: notificationCount },
+    { name: 'Messages', href: '/messages', icon: MessageCircle, notifications: 0 },
     { name: 'Profile', href: '/profile', icon: User, notifications: 0 },
-    { name: 'Post', href: '#', icon: PenSquare, notifications: 0 },
+    { name: 'My Posts', href: null, icon: PenSquare, notifications: 0 }, // Change href to null
   ];
 
   const allSuggestedUsers: SuggestedUser[] = suggestedUsers?.slice(0, 3);
@@ -179,13 +230,20 @@ export default function MainLayout({
     }
   };
 
-
+  // Update fetchAllTheConnection function to filter out blocked users
   const fetchAllTheConnection = async () => {
-    let userId = localStorage.getItem('userId') || "404";
-    const res = await apiRequest(`followers/${userId}/followed`, "GET");
-    console.log("HEllo ", res);
-    setMyConnections(res);
+    try {
+      let userId = localStorage.getItem('userId') || "404";
+      const res = await apiRequest(`followers/${userId}/followed`, "GET") || [];
+      // Filter out users with status 0
+      const activeConnections = res.filter((user: any) => user.status !== "0" && user.status !== 0);
+      setMyConnections(activeConnections);
+    } catch (error) {
+      console.error("Error fetching connections:", error);
+      setMyConnections([]);
+    }
   }
+
   useEffect(() => {
     const handleScroll = () => {
       setScrolled(window.scrollY > 10);
@@ -208,11 +266,14 @@ export default function MainLayout({
     });
 
     fetchAllTheConnection();
+    fetchNotificationCount();
+    const notificationInterval = setInterval(fetchNotificationCount, 30000);
 
     window.addEventListener('scroll', handleScroll);
     return () => {
       window.removeEventListener('scroll', handleScroll);
       unsubscribe();
+      clearInterval(notificationInterval);
     };
   }, []);
 
@@ -222,15 +283,25 @@ export default function MainLayout({
         let userId = localStorage.getItem('userId') || "404";
         const userResponse = await apiRequest(`users/${userId}`, 'GET') || {};
         
-        // Get profile picture from localStorage first, then fallback to API response
-        const profilePicture = localStorage.getItem("profile_picture") || 
-                             userResponse.profilePicture || 
-                             DEFAULT_AVATAR;
+        // Get the profile picture directly from the API response
+        const profilePicture = userResponse.profilePicture ? 
+          CLOUDINARY_BASE_URL + userResponse.profilePicture : 
+          DEFAULT_AVATAR;
   
+        // Update localStorage with new user's profile picture
+        localStorage.setItem("profile_picture", profilePicture);
+        
         setCurrentUser({
           username: userResponse.username || user.email?.split('@')[0] || 'User',
           email: userResponse.email || user.email || '',
-          photoURL: profilePicture // Use the updated profile picture
+          photoURL: profilePicture
+        });
+      } else {
+        // Clear user data when logged out
+        setCurrentUser({
+          username: '',
+          email: '',
+          photoURL: DEFAULT_AVATAR
         });
       }
     });
@@ -246,11 +317,8 @@ export default function MainLayout({
       const allPosts = posts.map((post: any) => ({
         id: post.id,
         content: post.content,
-        time: timeAgo(post.createdAt),
-        status: post.status,
-        likes: post.likeCount || 0,
-        comments: post.commentCount || 0,
-        reason: "Your post was reported.."
+        time: timeAgo(post.updatedAt || post.createdAt), // Use updatedAt if available
+        status: post.status
       }));
   
       setUserPosts(allPosts);
@@ -265,6 +333,43 @@ export default function MainLayout({
       fetchUserPosts();
     }
   }, [isPostModalOpen]);
+
+  // Update fetchUsers function to filter out blocked users
+  const fetchUsers = async (query: string) => {
+    try {
+      // Filter existing connections and suggested users based on query and status
+      const filteredConnections = myConnections
+        .filter(user => 
+          user.username.toLowerCase().includes(query.toLowerCase()) && 
+          user.status !== "0" && 
+          Number(user.status) !== 0
+        )
+        .map(user => ({
+          ...user,
+          id: user.id.toString(),
+          isConnection: true
+        }));
+  
+      const filteredSuggestions = suggestedUsers
+        .filter(user => 
+          user.username.toLowerCase().includes(query.toLowerCase()) && 
+          user.status !== "0" && 
+          Number(user.status) !== 0
+        )
+        .map(user => ({
+          ...user,
+          id: user.id.toString(),
+          isConnection: false
+        }));
+  
+      // Combine and set results
+      const combinedResults = [...filteredConnections, ...filteredSuggestions];
+      setSearchResults(combinedResults);
+    } catch (error) {
+      console.error('Error processing users:', error);
+      toast.error('Failed to fetch users');
+    }
+  };
 
   const showSidebars = !pathname?.includes('/landing');
 
@@ -331,30 +436,26 @@ export default function MainLayout({
                             const isActive = pathname === item.href;
 
                             return (
-                              <Link
+                              <Button
                                 key={item.name}
-                                href={item.href}
-                                className="relative"
-                                onClick={(e) => {
-                                  if (item.name === 'Post') {
-                                    e.preventDefault();
+                                variant={isActive ? 'default' : 'ghost'}
+                                className="w-full justify-start hover-scale"
+                                onClick={() => {
+                                  if (item.name === 'My Posts') {
                                     setIsPostModalOpen(true);
+                                  } else if (item.href) {
+                                    router.push(item.href);
                                   }
                                 }}
                               >
-                                <Button
-                                  variant={isActive ? 'default' : 'ghost'}
-                                  className="w-full justify-start hover-scale"
-                                >
-                                  <Icon className="mr-2 h-5 w-5" />
-                                  {item.name}
-                                  {item.notifications > 0 && (
-                                    <Badge variant="destructive" className="ml-auto">
-                                      {item.notifications}
-                                    </Badge>
-                                  )}
-                                </Button>
-                              </Link>
+                                <Icon className="mr-2 h-5 w-5" />
+                                {item.name}
+                                {item.notifications > 0 && (
+                                  <Badge variant="destructive" className="ml-auto">
+                                    {item.notifications}
+                                  </Badge>
+                                )}
+                              </Button>
                             );
                           })}
                         </nav>
@@ -365,7 +466,6 @@ export default function MainLayout({
                             className="w-full justify-start hover-scale"
                             onClick={async () => {
                               await signOut();
-                              localStorage.setItem("userId", "Invalid");
                               router.push('/login');
                             }}
                           >
@@ -421,30 +521,27 @@ export default function MainLayout({
               const isActive = pathname === item.href;
 
               return (
-                <Link
+                <Button
                   key={item.name}
-                  href={item.href}
-                  onClick={(e) => {
-                    if (item.name === 'Post') {
-                      e.preventDefault();
+                  variant={isActive ? 'default' : 'ghost'}
+                  className="w-full justify-start hover-scale animate-slide-up"
+                  style={{ animationDelay: `${index * 0.1}s` }}
+                  onClick={() => {
+                    if (item.name === 'My Posts') {
                       setIsPostModalOpen(true);
+                    } else if (item.href) {
+                      router.push(item.href);
                     }
                   }}
                 >
-                  <Button
-                    variant={isActive ? 'default' : 'ghost'}
-                    className="w-full justify-start hover-scale animate-slide-up"
-                    style={{ animationDelay: `${index * 0.1}s` }}
-                  >
-                    <Icon className="mr-2 h-5 w-5" />
-                    {item.name}
-                    {item.notifications > 0 && (
-                      <Badge variant="destructive" className="ml-auto">
-                        {item.notifications}
-                      </Badge>
-                    )}
-                  </Button>
-                </Link>
+                  <Icon className="mr-2 h-5 w-5" />
+                  {item.name}
+                  {item.notifications > 0 && (
+                    <Badge variant="destructive" className="ml-auto">
+                      {item.notifications}
+                    </Badge>
+                  )}
+                </Button>
               );
             })}
           </nav>
@@ -452,16 +549,26 @@ export default function MainLayout({
           <div className="mt-0">
             <h3 className="font-semibold mb-2 px-2">My Connections</h3>
             <div className="space-y-1 max-h-[200px] overflow-y-auto">
-              {myConnections.map((connection) => (
+              {myConnections
+                .filter(connection => 
+                  connection.username.toLowerCase().includes(searchQuery.toLowerCase()) && 
+                  connection.status !== "0" && 
+                  Number(connection.status) !== 0
+                )
+                .map((connection) => (
                 <Link
                   key={connection.id}
                   href={`/profile/${connection.id}`}
                   className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted transition-colors group"
                 >
                   <Avatar className="h-8 w-8">
-                    <img src={DEFAULT_AVATAR} alt={connection.username} />
+                    <img 
+                      src={getFullImageUrl(connection.profilePicture)}
+                      alt={connection.username}
+                      className="h-full w-full object-cover"
+                    />
                   </Avatar>
-                  <span className="text-sm font-medium truncate group-hover:text-primary transition-colors">
+                  <span className="text-xs font-medium truncate group-hover:text-primary transition-colors max-w-[120px]">
                     {connection.username}
                   </span>
                 </Link>
@@ -487,30 +594,26 @@ export default function MainLayout({
             const isActive = pathname === item.href;
 
             return (
-              <Link
+              <Button
                 key={item.name}
-                href={item.href}
-                className="relative"
-                onClick={(e) => {
-                  if (item.name === 'Post') {
-                    e.preventDefault();
+                variant="ghost"
+                size="icon"
+                className={`hover-scale ${isActive ? 'text-primary' : ''}`}
+                onClick={() => {
+                  if (item.name === 'My Posts') {
                     setIsPostModalOpen(true);
+                  } else if (item.href) {
+                    router.push(item.href);
                   }
                 }}
               >
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={`hover-scale ${isActive ? 'text-primary' : ''}`}
-                >
-                  <Icon className="h-5 w-5" />
-                  {item.notifications > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full w-4 h-4 text-xs flex items-center justify-center">
-                      {item.notifications}
-                    </span>
-                  )}
-                </Button>
-              </Link>
+                <Icon className="h-5 w-5" />
+                {item.notifications > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full w-4 h-4 text-xs flex items-center justify-center">
+                    {item.notifications}
+                  </span>
+                )}
+              </Button>
             );
           })}
         </nav>
@@ -527,8 +630,11 @@ export default function MainLayout({
           <h3 className="font-semibold mb-4 animate-slide-up">People you may know</h3>
           <div className="space-y-3">
             {allSuggestedUsers.map((user: any, index: number) => {
-              const isRequestSent = sentRequests.includes(user.id);
-
+              const isRequestSent = sentRequests[user.id];
+              
+              // Skip rendering if user is blocked
+              if (user.status === "0" || user.status === 0) return null;
+            
               return (
                 <Card
                   key={user.id}
@@ -537,16 +643,15 @@ export default function MainLayout({
                 >
                   <div className="flex items-center gap-3">
                     <Avatar className="h-10 w-10">
-                    <img 
-                      src={user.photoURL || DEFAULT_AVATAR} 
-                      alt={user.username}
-                      className="object-cover"
-                    />
+                      <img 
+                        src={getFullImageUrl(user.profilePicture)}
+                        alt={user.username}
+                        className="h-full w-full object-cover"
+                      />
                     </Avatar>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{user.username}</p>
-                      <p className="text-sm text-muted-foreground truncate">{user.bio}</p>
-                      {/* <p className="text-xs text-muted-foreground truncate">{user.email}</p> */}
+                      <p className="text-sm font-medium truncate">{user.username}</p>
+                      <p className="text-xs text-muted-foreground truncate">{user.bio}</p>
                     </div>
                     <Button
                       size="sm"
@@ -554,25 +659,33 @@ export default function MainLayout({
                       className={`hover-scale ml-2 transition-all duration-300 ${isRequestSent ? "text-green-500" : ""
                         }`}
                       onClick={() => {
-                        if (!isRequestSent && !pendingRequests.includes(user.id)) {
+                        if (!isRequestSent && !pendingRequests[user.id]) {
                           let userId = localStorage.getItem('userId') || "404";
                           sentTheConnectionReq(user.id.toString(), userId);
-                          setPendingRequests(prev => [...prev, user.id]);
+                          setPendingRequests(prev => ({ ...prev, [user.id]: true }));
                           setTimeout(() => {
-                            setPendingRequests(prev => prev.filter(id => id !== user.id));
-                            setSentRequests(prev => [...prev, user.id]);
+                            setPendingRequests(prev => {
+                              const newPending = { ...prev };
+                              delete newPending[user.id];
+                              return newPending;
+                            });
+                            setSentRequests(prev => ({ ...prev, [user.id]: true }));
                           }, 3000);
                         }
                       }}
-                      disabled={isRequestSent || pendingRequests.includes(user.id)}
+                      disabled={isRequestSent || pendingRequests[user.id]}
                     >
                       <div className="relative w-5 h-5">
-                        {pendingRequests.includes(user.id) ? (
+                        {pendingRequests[user.id] ? (
                           <ProgressTimer
                             duration={3}
                             onComplete={() => {
-                              setPendingRequests(prev => prev.filter(id => id !== user.id));
-                              setSentRequests(prev => [...prev, user.id]);
+                              setPendingRequests(prev => {
+                                const newPending = { ...prev };
+                                delete newPending[user.id];
+                                return newPending;
+                              });
+                              setSentRequests(prev => ({ ...prev, [user.id]: true }));
                             }}
                           />
                         ) : (
@@ -623,7 +736,9 @@ export default function MainLayout({
             <div className="space-y-3">
               {myConnections
                 .filter(connection =>
-                  connection.username.toLowerCase().includes(searchQuery.toLowerCase())
+                  connection.username.toLowerCase().includes(searchQuery.toLowerCase()) && 
+                  connection.status !== "0" && 
+                  Number(connection.status) !== 0
                 )
                 .map((connection) => (
                   <div
@@ -632,13 +747,17 @@ export default function MainLayout({
                   >
                     <div className="relative">
                       <Avatar className="h-12 w-12">
-                        <img src={DEFAULT_AVATAR} alt={connection.username} />
+                        <img 
+                          src={getFullImageUrl(connection.profilePicture)}
+                          alt={connection.username}
+                          className="h-full w-full object-cover"
+                        />
                       </Avatar>
                       
                     </div>
 
                     <div className="flex-1">
-                      <h4 className="font-medium">{connection.username}</h4>
+                      <h4 className="text-sm font-medium truncate max-w-[200px]">{connection.username}</h4>
                       
                     </div>
 
@@ -679,11 +798,10 @@ export default function MainLayout({
               {suggestedUsers
                 .filter(user =>
                   user.username.toLowerCase().includes(suggestionsSearchQuery.toLowerCase()) ||
-                  user.username.toLowerCase().includes(suggestionsSearchQuery.toLowerCase()) ||
-                  user.title.toLowerCase().includes(suggestionsSearchQuery.toLowerCase())
+                  user.username.toLowerCase().includes(suggestionsSearchQuery.toLowerCase())
                 )
                 .map((user) => {
-                  const isRequestSent = sentRequests.includes(user.id);
+                  const isRequestSent = sentRequests[user.id];
 
                   return (
                     <Card
@@ -692,12 +810,17 @@ export default function MainLayout({
                     >
                       <div className="flex items-center gap-4">
                         <Avatar className="h-12 w-12">
-                          <Image width={80} height={80} src={DEFAULT_AVATAR} alt={user.username} className="object-cover" />
+                          <img 
+                            src={getFullImageUrl(user.profilePicture)}
+                            alt={user.username}
+                            className="h-full w-full object-cover"
+                          />
                         </Avatar>
                         <div className="flex-1 min-w-0">
                           {/* <p className="font-medium truncate">{user.name}</p>
                           <p className="text-sm text-muted-foreground truncate">{user.title}</p> */}
-                          <p className="text-xs text-muted-foreground truncate">{user.username}</p>
+                          <p className="text-sm font-medium truncate max-w-[150px]">{user.username}</p>
+                          <p className="text-xs text-muted-foreground truncate">{user.bio}</p>
                         </div>
                         <Button
                           size="sm"
@@ -705,24 +828,28 @@ export default function MainLayout({
                           className={`transition-all duration-300 ${isRequestSent ? "text-green-500" : ""
                             }`}
                           onClick={() => {
-                            if (!isRequestSent && !pendingRequests.includes(user.id)) {
+                            if (!isRequestSent && !pendingRequests[user.id]) {
                               let userId = localStorage.getItem('userId') || "404";
                               sentTheConnectionReq(user.id.toString(), userId);
-                              setPendingRequests(prev => [...prev, user.id]);
+                              setPendingRequests(prev => ({ ...prev, [user.id]: true }));
                               setTimeout(() => {
-                                setPendingRequests(prev => prev.filter(id => id !== user.id));
-                                setSentRequests(prev => [...prev, user.id]);
+                                setPendingRequests(prev => {
+                                  const newPending = { ...prev };
+                                  delete newPending[user.id];
+                                  return newPending;
+                                });
+                                setSentRequests(prev => ({ ...prev, [user.id]: true }));
                               }, 3000);
                             }
                           }}
-                          disabled={isRequestSent || pendingRequests.includes(user.id)}
+                          disabled={isRequestSent || pendingRequests[user.id]}
                         >
                           {isRequestSent ? (
                             <Check className="h-4 w-4" />
                           ) : (
                             <UserPlus className="h-4 w-4" />
                           )}
-                          <span className="ml-2">{isRequestSent ? 'Request Sent' : 'Connect'}</span>
+                          
                         </Button>
                       </div>
                     </Card>
@@ -886,7 +1013,7 @@ export default function MainLayout({
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="text-2xl font-bold">
-              Search Connections
+              Search Users
             </DialogTitle>
           </DialogHeader>
 
@@ -894,43 +1021,85 @@ export default function MainLayout({
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               type="search"
-              placeholder="Search connections..."
+              placeholder="Search users..."
               className="w-full pl-10 bg-muted/50"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                fetchUsers(e.target.value);
+              }}
             />
           </div>
 
           <div className="flex-1 overflow-y-auto pr-2">
             <div className="space-y-3">
               {searchResults
-                .filter(result =>
-                  result.username.toLowerCase().includes(searchQuery.toLowerCase())
-                )
-                .map((result) => (
+                .map((user) => {
+                const isRequestSent = sentRequests[user.id];
+
+                return (
                   <div
-                    key={result.id}
+                    key={user.id}
                     className="flex items-center gap-4 p-3 rounded-lg hover:bg-muted transition-all duration-200"
                   >
                     <div className="relative">
                       <Avatar className="h-12 w-12">
-                        <img src={result.avatar} alt={result.username} />
+                        <img 
+                          src={getFullImageUrl(user.profilePicture)}
+                          alt={user.username}
+                          className="h-full w-full object-cover"
+                        />
                       </Avatar>
                     </div>
 
-                    <div className="flex-1">
-                      <h4 className="font-medium">{result.username}</h4>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-medium truncate">{user.username}</h4>
                     </div>
 
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="hover:bg-primary/10 hover:text-primary"
-                    >
-                      <MessageCircle className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      {!user.isConnection && (
+                        <Button
+                          size="sm"
+                          variant={isRequestSent ? "ghost" : "default"}
+                          className={`transition-all duration-300 ${
+                            isRequestSent ? "text-green-500" : ""
+                          }`}
+                          onClick={() => {
+                            if (!isRequestSent) {
+                              let userId = localStorage.getItem('userId') || "404";
+                              sentTheConnectionReq(user.id.toString(), userId);
+                              setSentRequests(prev => ({ ...prev, [user.id]: true }));
+                            }
+                          }}
+                          disabled={isRequestSent}
+                        >
+                          {isRequestSent ? (
+                            <>
+                              <Check className="h-4 w-4 mr-2" />
+                              
+                            </>
+                          ) : (
+                            <>
+                              <UserPlus className="h-4 w-4 mr-2" />
+                              
+                            </>
+                          )}
+                        </Button>
+                      )}
+                      
+                      <Link href={`/profile/${user.id}`}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="hover:bg-primary/10 hover:text-primary"
+                        >
+                          View Profile
+                        </Button>
+                      </Link>
+                    </div>
                   </div>
-                ))}
+                );
+              })}
             </div>
           </div>
         </DialogContent>

@@ -9,6 +9,9 @@ import { Separator } from '@/components/ui/separator';
 import { Search, Send, Image, Smile, Paperclip, MoreVertical, Phone, Video, MessageCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { apiRequest } from '@/app/apiconnector/api';
+import { toast } from 'sonner';
+// import { getFullImageUrl } from '@/lib/utils';
 
 interface Contact {
   id: number;
@@ -29,60 +32,52 @@ interface Message {
 }
 
 export default function MessagesPage() {
-  const [contacts, setContacts] = useState<Contact[]>([
-    {
-      id: 1,
-      name: 'Sarah Wilson',
-      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=100&auto=format&fit=crop',
-      lastMessage: "Hey, how's the project coming along?",
-      time: '5m',
-      unread: 2,
-      online: true
-    },
-    {
-      id: 2,
-      name: 'Alex Johnson',
-      avatar: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?q=80&w=100&auto=format&fit=crop',
-      lastMessage: 'Thanks for the update!',
-      time: '1h',
-      unread: 0,
-      online: true
-    },
-    {
-      id: 3,
-      name: 'Emily Chen',
-      avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=100&auto=format&fit=crop',
-      lastMessage: 'Let\'s schedule a call to discuss the details',
-      time: '3h',
-      unread: 0,
-      online: false
-    },
-    {
-      id: 4,
-      name: 'Michael Brown',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=100&auto=format&fit=crop',
-      lastMessage: 'Did you see the latest blockchain news?',
-      time: '1d',
-      unread: 0,
-      online: false
-    },
-    {
-      id: 5,
-      name: 'Jessica Lee',
-      avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=100&auto=format&fit=crop',
-      lastMessage: 'I\'ll send you the document tomorrow',
-      time: '2d',
-      unread: 0,
-      online: true
-    }
-  ]);
-  
+  const [contacts, setContacts] = useState<Contact[]>([]);
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
+  // Add the Cloudinary URL constant
+  const CLOUDINARY_BASE_URL = "https://res.cloudinary.com/djvat4mcp/image/upload/v1741357526/";
+  const DEFAULT_AVATAR = "https://res.cloudinary.com/djvat4mcp/image/upload/v1741357526/zybt9ffewrjwhq7tyvy1.png";
+  // Add function to get full image URL
+  const getFullImageUrl = (profilePicture: string | null | undefined): string => {
+    if (!profilePicture) return DEFAULT_AVATAR;
+    if (profilePicture.startsWith('http')) return profilePicture;
+    return CLOUDINARY_BASE_URL + profilePicture;
+  };
+
+  const fetchConnections = async () => {
+    try {
+      const userId = localStorage.getItem('userId') || "404";
+      const connections = await apiRequest(`followers/${userId}/followed`, 'GET') || [];
+      
+      // Map connections to Contact interface
+      const contactsList = await Promise.all(connections.map(async (connection: any) => {
+        const userDetails = await apiRequest(`users/${connection.id}`, 'GET');
+        return {
+          id: userDetails.id,
+          name: userDetails.username,
+          avatar: getFullImageUrl(userDetails.profilePicture),
+          lastMessage: "No messages yet",
+          time: "Now",
+          unread: 0,
+          online: userDetails.status === 1
+        };
+      }));
+
+      setContacts(contactsList);
+    } catch (error) {
+      console.error('Error fetching connections:', error);
+      toast.error('Failed to load contacts');
+    }
+  };
+
+  useEffect(() => {
+    fetchConnections();
+  }, []);
+
   const filteredContacts = contacts.filter(contact => 
     contact.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -99,41 +94,41 @@ export default function MessagesPage() {
     
     // Load conversation
     const conversation: Message[] = [
-      {
-        id: 1,
-        senderId: contact.id,
-        text: 'Hi there! How are you doing today?',
-        time: '10:30 AM',
-        read: true
-      },
-      {
-        id: 2,
-        senderId: 0, // Current user
-        text: "Hey! I'm doing well, thanks for asking. How about you?",
-        time: '10:32 AM',
-        read: true
-      },
-      {
-        id: 3,
-        senderId: contact.id,
-        text: "I'm great! Just working on that blockchain project we discussed.",
-        time: '10:34 AM',
-        read: true
-      },
-      {
-        id: 4,
-        senderId: 0,
-        text: "That sounds interesting! How's it coming along?",
-        time: '10:36 AM',
-        read: true
-      },
-      {
-        id: 5,
-        senderId: contact.id,
-        text: contact.lastMessage,
-        time: '10:40 AM',
-        read: false
-      }
+      // {
+      //   id: 1,
+      //   senderId: contact.id,
+      //   text: 'Hi there! How are you doing today?',
+      //   time: '10:30 AM',
+      //   read: true
+      // },
+      // {
+      //   id: 2,
+      //   senderId: 0, // Current user
+      //   text: "Hey! I'm doing well, thanks for asking. How about you?",
+      //   time: '10:32 AM',
+      //   read: true
+      // },
+      // {
+      //   id: 3,
+      //   senderId: contact.id,
+      //   text: "I'm great! Just working on that blockchain project we discussed.",
+      //   time: '10:34 AM',
+      //   read: true
+      // },
+      // {
+      //   id: 4,
+      //   senderId: 0,
+      //   text: "That sounds interesting! How's it coming along?",
+      //   time: '10:36 AM',
+      //   read: true
+      // },
+      // {
+      //   id: 5,
+      //   senderId: contact.id,
+      //   text: contact.lastMessage,
+      //   time: '10:40 AM',
+      //   read: false
+      // }
     ];
     
     setMessages(conversation);

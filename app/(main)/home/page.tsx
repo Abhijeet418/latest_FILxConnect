@@ -19,30 +19,125 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { toast } from 'sonner';
 import { apiRequest } from '@/app/apiconnector/api';
 import { title } from 'node:process';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 const DEFAULT_URL = "https://res.cloudinary.com/djvat4mcp/image/upload/v1741357526/zybt9ffewrjwhq7tyvy1.png";
 
+// Add these constants at the top of the file
+const CLOUDINARY_BASE_URL = "https://res.cloudinary.com/djvat4mcp/image/upload/v1741357526/";
+const DEFAULT_AVATAR = "https://res.cloudinary.com/djvat4mcp/image/upload/v1741357526/zybt9ffewrjwhq7tyvy1.png";
+
+// Add a helper function to construct the full image URL
+const getFullImageUrl = (profilePicture: string | null | undefined): string => {
+  if (!profilePicture) return DEFAULT_AVATAR;
+  if (profilePicture.startsWith('http')) return profilePicture;
+  return CLOUDINARY_BASE_URL + profilePicture;
+};
+
+// First, update the timeAgo function to handle the date format from your API
+function timeAgo(dateString: string | undefined | null) {
+  try {
+    if (!dateString) return 'Just now';
+
+    // Parse the date string using the exact format from your API
+    const parsedDate = new Date(dateString);
+    
+    // Add logging to debug the date parsing
+    console.log('Original date string:', dateString);
+    console.log('Parsed date:', parsedDate);
+    
+    if (isNaN(parsedDate.getTime())) {
+      console.error('Invalid date:', dateString);
+      return 'Just now';
+    }
+
+    const now = new Date();
+    const diffInSeconds = Math.floor((now.getTime() - parsedDate.getTime()) / 1000);
+
+    // Debug logging
+    console.log('Current time:', now);
+    console.log('Time difference in seconds:', diffInSeconds);
+
+    if (diffInSeconds < 0) {
+      console.warn('Future date detected:', dateString);
+      return 'Just now';
+    }
+
+    const intervals = {
+      year: 31536000,
+      month: 2592000,
+      week: 604800,
+      day: 86400,
+      hour: 3600,
+      minute: 60,
+      second: 1
+    };
+
+    for (const [unit, secondsInUnit] of Object.entries(intervals)) {
+      const interval = Math.floor(diffInSeconds / secondsInUnit);
+      if (interval >= 1) {
+        return `${interval} ${unit}${interval === 1 ? '' : 's'} ago`;
+      }
+    }
+
+    return 'Just now';
+  } catch (error) {
+    console.error('Error in timeAgo:', error, 'for date:', dateString);
+    return 'Just now';
+  }
+}
+
 // First, add these interfaces at the top of your file
+interface Author {
+  id: string;
+  username: string;
+  profilePicture: string;
+}
+
+interface Reaction {
+  id: string;
+  user: {
+    username: string;
+    avatar: string;
+  };
+  emoji: string;
+  createdAt: string;
+}
+
 interface Comment {
-  id: number;
-  author: string;
-  avatar: string;
+  id: string;
+  user: {
+    username: string;
+    avatar: string;
+  };
   content: string;
-  time: string;
+  createdAt: string;
+}
+
+interface Media {
+  id: string;
+  mediaUrl: string;
+  mediaType: string;
+  postId: string;
 }
 
 interface Post {
-  id: number;
-  author: string;
-  avatar: string;
+  id: string;
+  author: Author;
   content: string;
-  image: string | null;
-  time: string;
-  likes: number;
-  liked: boolean;
+  createdAt: string;
+  reactions: number;
+  likedBy: Reaction[];
   comments: number;
   commentsList: Comment[];
-  shares: number;
+  mediaUrls: Media[];
+}
+
+interface UserProfile {
+  id: string;
+  name: string;
+  profilePicture: string;
+  email: string;
 }
 
 export default function HomePage() {
@@ -56,82 +151,204 @@ export default function HomePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
 
-  const [posts, setPosts] = useState<Post[]>([
-    {
-      id: 1,
-      author: 'Tridib Paul',
-      avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=100&auto=format&fit=crop',
-      content: 'Excited to announce that our team has just completed a major milestone in our project! 🚀 #springboot #innovation',
-      image: null,
-      time: '2h ago',
-      likes: 24,
-      liked: false,
-      comments: 5,
-      commentsList: [
-        {
-          id: 1,
-          author: 'Alice Johnson',
-          avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=100&auto=format&fit=crop',
-          content: 'This is amazing! Keep up the great work! 🎉',
-          time: '1h ago'
-        },
-        {
-          id: 2,
-          author: 'Bob Wilson',
-          avatar: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?q=80&w=100&auto=format&fit=crop',
-          content: 'Interesting perspective on blockchain technology',
-          time: '30m ago'
-        }
-      ],
-      shares: 2
-    },
-    {
-      id: 2,
-      author: 'Jaspreet Singh',
-      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=100&auto=format&fit=crop',
-      content: 'Just deployed our website on vercel!. Check it out and let me know your thoughts! 📝 #web3 #development',
-      image: 'https://images.unsplash.com/photo-1633356122102-3fe601e05bd2?q=80&w=2070&auto=format&fit=crop',
-      time: '4h ago',
-      likes: 42,
-      liked: false,
-      comments: 8,
-      commentsList: [],
-      shares: 6
-    },
-    {
-      id: 3,
-      author: 'Joseph Paul',
-      avatar: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?q=80&w=100&auto=format&fit=crop',
-      content: 'Bitcoin price whenever I click the buy button... #funny',
-      image: 'https://images.unsplash.com/photo-1591994843349-f415893b3a6b?q=80&w=2070&auto=format&fit=crop',
-      time: '6h ago',
-      likes: 67,
-      liked: true,
-      comments: 12,
-      commentsList: [],
-      shares: 9
-    }
-  ]);
+  const [posts, setPosts] = useState<Post[]>([]);
 
   const [commentText, setCommentText] = useState('');
-  const [activeCommentId, setActiveCommentId] = useState<number | null>(null);
+  const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   const emojis = ['😀', '😂', '❤️', '👍', '🎉', '🔥', '💯', '🚀'];
 
+  const [userProfile, setUserProfile] = useState<UserProfile>({
+    id: '',
+    name: '',
+    profilePicture: DEFAULT_AVATAR,
+    email: ''
+  });
+
+  // Add this state
+  const [activeCommentDialog, setActiveCommentDialog] = useState<string | null>(null);
+
+  // Add these new state variables at the top of the component
+  const [isReportingPost, setIsReportingPost] = useState(false);
+  const [isReportingUser, setIsReportingUser] = useState(false);
+  const [reportReason, setReportReason] = useState('');
+  const [reportDialogOpen, setReportDialogOpen] = useState(false);
+  const [reportType, setReportType] = useState<'post' | 'user' | null>(null);
+  const [reportedId, setReportedId] = useState<string>('');
+
   useEffect(() => {
-    const fetchProfilePicture = () => {
-      const storedPicture = localStorage.getItem("profile_picture");
-      setProfilePicture(storedPicture || DEFAULT_URL);
+    const fetchProfilePicture = async () => {
+      try {
+        // First check if user is logged in by checking userId
+        const userId = localStorage.getItem('userId');
+        if (!userId) {
+          setProfilePicture(DEFAULT_AVATAR);
+          return;
+        }
+
+        // Then check for stored profile picture
+        const storedPicture = localStorage.getItem("profile_picture");
+        if (storedPicture) {
+          setProfilePicture(storedPicture.startsWith('http') ? storedPicture : getFullImageUrl(storedPicture));
+        } else {
+          // If no stored picture, fetch from API
+          const userResponse = await apiRequest(`users/${userId}`, 'GET');
+          if (userResponse?.profilePicture) {
+            const fullUrl = getFullImageUrl(userResponse.profilePicture);
+            localStorage.setItem("profile_picture", fullUrl);
+            setProfilePicture(fullUrl);
+          } else {
+            setProfilePicture(DEFAULT_AVATAR);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching profile picture:', error);
+        setProfilePicture(DEFAULT_AVATAR);
+      }
     };
 
     fetchProfilePicture();
-    // Add event listener for storage changes
     window.addEventListener('storage', fetchProfilePicture);
 
     return () => {
       window.removeEventListener('storage', fetchProfilePicture);
     };
+  }, []);
+
+  // Update the fetchConnectionPosts function
+const fetchConnectionPosts = async () => {
+  try {
+    const userId = localStorage.getItem('userId') || "404";
+    
+    // Fetch connections
+    const connections = await apiRequest(`followers/${userId}/followed`, 'GET') || [];
+    const activeConnections = connections.filter((user: any) => user.status !== "0" && user.status !== 0);
+
+    // Fetch all posts from connections
+    let allPosts: any[] = [];
+    for (const connection of activeConnections) {
+      // Get connection's user details to check status
+      const userDetails = await apiRequest(`users/${connection.id}`, 'GET');
+      
+      // Only fetch posts if user is not blocked
+      if (userDetails.status !== 0) {
+        const userPosts = await apiRequest(`posts/user/${connection.id}`, 'GET') || [];
+        const activePosts = userPosts.filter((post: any) => post.status === "1");
+        allPosts = [...allPosts, ...activePosts];
+      }
+    }
+
+    // Enrich only non-blocked users' posts
+    const enrichedPosts = await Promise.all(allPosts.map(async (post) => {
+      try {
+        // Check post author's status
+        const authorDetails = await apiRequest(`users/${post.user.id}`, 'GET');
+        if (authorDetails.status === 0) {
+          return null; // Skip posts from blocked users
+        }
+
+        // Get reactions with user details
+        const reactions = await apiRequest(`reactions/posts/${post.id}`, 'GET') || [];
+        const enrichedReactions = await Promise.all(reactions.map(async (r: any) => {
+          const userDetails = await apiRequest(`users/${r.userId}`, 'GET');
+          return {
+            id: r.id,
+            user: {
+              username: userDetails.status === 0 ? 'Blocked User' : userDetails.username,
+              avatar: userDetails.status === 0 ? DEFAULT_AVATAR : getFullImageUrl(userDetails.profilePicture)
+            },
+            emoji: '👍',
+            createdAt: r.createdAt
+          };
+        }));
+
+        // Get comments with user details
+        const comments = await apiRequest(`comments/${post.id}`, 'GET') || [];
+        const enrichedComments = await Promise.all((comments || []).map(async (comment: any) => {
+          const commentUserDetails = await apiRequest(`users/${comment.userId}`, 'GET');
+          return {
+            id: comment.id,
+            user: {
+              username: commentUserDetails.status === 0 ? 'Blocked User' : commentUserDetails.username,
+              avatar: commentUserDetails.status === 0 ? DEFAULT_AVATAR : getFullImageUrl(commentUserDetails.profilePicture)
+            },
+            content: commentUserDetails.status === 0 ? 'This comment is from a blocked user' : comment.content,
+            createdAt: comment.createdAt
+          };
+        }));
+
+        // Get media
+        const media = await apiRequest(`media/${post.id}`, 'GET') || [];
+
+        return {
+          id: post.id,
+          author: {
+            id: post.user.id,
+            username: authorDetails.username,
+            profilePicture: getFullImageUrl(authorDetails.profilePicture)
+          },
+          content: post.content,
+          createdAt: post.createdAt,
+          reactions: enrichedReactions.length,
+          likedBy: enrichedReactions,
+          comments: enrichedComments.length,
+          commentsList: enrichedComments,
+          mediaUrls: (media || []).map((m: any) => ({
+            id: m.id,
+            mediaUrl: getFullImageUrl(m.mediaUrl),
+            mediaType: m.mediaType || 'image',
+            postId: m.postId
+          }))
+        };
+      } catch (error) {
+        console.error(`Error enriching post ${post.id}:`, error);
+        return null;
+      }
+    })).then(posts => posts.filter((post): post is Post => post !== null));
+
+    // Sort by date (newest first)
+    return enrichedPosts.sort((a, b) => 
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+  } catch (error) {
+    console.error('Error fetching posts:', error);
+    toast.error('Failed to fetch posts');
+    return [];
+  }
+};
+
+  const fetchUserProfile = async () => {
+    try {
+      const userId = localStorage.getItem('userId');
+      if (!userId) {
+        toast.error('User not logged in');
+        return;
+      }
+  
+      const userData = await apiRequest(`users/${userId}`, 'GET');
+      if (userData) {
+        setUserProfile({
+          id: userData.id,
+          name: userData.username,
+          profilePicture: getFullImageUrl(userData.profilePicture),
+          email: userData.email
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+      toast.error('Failed to load user profile');
+    }
+  };
+
+  useEffect(() => {
+    fetchUserProfile();
+    const loadPosts = async () => {
+      const posts = await fetchConnectionPosts();
+      setPosts(posts);
+    };
+    loadPosts();
   }, []);
 
   const handlePostSubmit = async () => {
@@ -243,56 +460,119 @@ export default function HomePage() {
     }
   };
 
-  const handleLike = (postId: number) => {
-    setPosts(posts.map(post => {
-      if (post.id === postId) {
-        return {
-          ...post,
-          likes: post.liked ? post.likes - 1 : post.likes + 1,
-          liked: !post.liked
-        };
+  const handleLikeClick = async (postId: string) => {
+    try {
+      let userId = localStorage.getItem('userId') || "404";
+      const currentPost = posts.find(p => p.id === postId);
+      const hasLiked = currentPost?.likedBy.some(like => 
+        like.user.username === userProfile.name
+      );
+  
+      if (hasLiked) {
+        const unlikeResponse = await apiRequest(`reactions/${postId}/${userId}`, 'DELETE');
+        if (unlikeResponse !== undefined) {
+          setPosts(prevPosts => 
+            prevPosts.map(post => {
+              if (post.id === postId) {
+                return {
+                  ...post,
+                  reactions: post.reactions - 1,
+                  likedBy: post.likedBy.filter(like => 
+                    like.user.username !== userProfile.name
+                  )
+                };
+              }
+              return post;
+            })
+          );
+          toast.error("Unliked this post!");
+        }
+        return;
       }
-      return post;
-    }));
+  
+      // Like the post
+      const likeResponse = await apiRequest(`reactions/${postId}/${userId}/👍`, 'POST');
+      if (likeResponse) {
+        // Fetch current user details to get status
+        const userDetails = await apiRequest(`users/${userId}`, 'GET');
+        
+        setPosts(prevPosts => 
+          prevPosts.map(post => {
+            if (post.id === postId) {
+              const newLike = {
+                id: Date.now().toString(),
+                user: {
+                  username: userDetails.status === 0 ? 'Blocked User' : userProfile.name,
+                  avatar: userDetails.status === 0 ? DEFAULT_AVATAR : getFullImageUrl(userProfile.profilePicture)
+                },
+                emoji: '👍',
+                createdAt: new Date().toISOString()
+              };
+      
+              return {
+                ...post,
+                reactions: post.reactions + 1,
+                likedBy: [newLike, ...post.likedBy]
+              };
+            }
+            return post;
+          })
+        );
+        toast.success("Post liked!");
+      }
+    } catch (error) {
+      console.error('Error liking/unliking post:', error);
+      toast.error("Failed to update like");
+    }
   };
 
-  const handleComment = (postId: number) => {
+  const handleCommentClick = (postId: string) => {
     if (activeCommentId === postId) {
       setActiveCommentId(null);
     } else {
       setActiveCommentId(postId);
-      setCommentText(''); // Clear comment text when switching posts
+      setCommentText('');
     }
   };
 
-  const submitComment = (postId: number) => {
+  const submitComment = async (postId: string) => {
     if (!commentText.trim()) return;
-
+  
     try {
-      setPosts(prevPosts => prevPosts.map(post => {
-        if (post.id === postId) {
-          const newComment: Comment = {
-            id: Date.now(),
-            author: 'You',
-            avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=100&auto=format&fit=crop',
-            content: commentText.trim(),
-            time: 'Just now'
-          };
-
-          return {
-            ...post,
-            comments: post.comments + 1,
-            commentsList: [newComment, ...post.commentsList]
-          };
-        }
-        return post;
-      }));
-
-      setCommentText('');
-      // Optionally, you can add a success toast/notification here
+      const userId = localStorage.getItem('userId');
+      if (!userId) {
+        toast.error('User not logged in');
+        return;
+      }
+  
+      let newComment = commentText.trim();
+      const response = await apiRequest(`comments?postId=${postId}&userId=${userId}&content=${newComment}`, 'POST');
+      if (response) {
+        setPosts(prevPosts => prevPosts.map(post => {
+          if (post.id === postId) {
+            return {
+              ...post,
+              comments: post.comments + 1,
+              commentsList: [{
+                id: response.id,
+                user: {
+                  username: userProfile.name,
+                  avatar: userProfile.profilePicture
+                },
+                content: commentText.trim(),
+                createdAt: new Date().toLocaleString()
+              }, ...post.commentsList]
+            };
+          }
+          return post;
+        }));
+  
+        setCommentText('');
+        toast.success('Comment added successfully');
+      }
     } catch (error) {
       console.error('Failed to add comment:', error);
-      // Optionally, you can add an error toast/notification here
+      toast.error('Failed to add comment');
     }
   };
 
@@ -311,43 +591,61 @@ export default function HomePage() {
     });
   }, []);
 
-  const handleShare = async (postId: number) => {
-    const shareUrl = `${window.location.origin}/post/${postId}`;
-
+  const handleShare = async (postId: string) => {
     try {
+      const shareUrl = `${window.location.origin}/post/${postId}`;
+      
       if (navigator.share) {
         await navigator.share({
-          title: 'Check out this post on FILxCONNECT',
-          text: 'I found this interesting post on FILxCONNECT',
+          title: 'Check out this post',
+          text: 'Check out this interesting post!',
           url: shareUrl
         });
-
-        // Update share count
-        setPosts(prevPosts => prevPosts.map(post =>
-          post.id === postId
-            ? { ...post, shares: post.shares + 1 }
-            : post
-        ));
-
-        toast.success('Post shared successfully!');
-      } else {
-        throw new Error('Web Share API not supported');
+        toast.success('Shared successfully!');
       }
     } catch (error) {
-      // Fallback to copy link
-      try {
-        await navigator.clipboard.writeText(shareUrl);
-        toast.success('Link copied to clipboard!');
+      console.error('Error sharing:', error);
+      toast.error('Failed to share post');
+    }
+  };
 
-        // Update share count
-        setPosts(prevPosts => prevPosts.map(post =>
-          post.id === postId
-            ? { ...post, shares: post.shares + 1 }
-            : post
-        ));
-      } catch (err) {
-        toast.error('Failed to share post');
+  // Add the report handling function
+  const handleReport = async (type: 'post' | 'user', id: string) => {
+    setReportType(type);
+    setReportedId(id);
+    setReportDialogOpen(true);
+  };
+
+  // Add the submit report function
+  const submitReport = async () => {
+    try {
+      const reporterUserId = localStorage.getItem('userId');
+      if (!reporterUserId) {
+        toast.error('You must be logged in to report');
+        return;
       }
+
+      const reportData = {
+        reporterUserId,
+        reason: reportReason,
+        ...(reportType === 'post' 
+          ? { reportedPostId: reportedId }
+          : { reportedUserId: reportedId })
+      };
+
+      const endpoint = reportType === 'post' ? 'reports/post' : 'reports/user';
+      const response = await apiRequest(endpoint, 'POST', reportData);
+
+      if (response) {
+        toast.success(`${reportType === 'post' ? 'Post' : 'User'} reported successfully`);
+        setReportDialogOpen(false);
+        setReportReason('');
+        setReportType(null);
+        setReportedId('');
+      }
+    } catch (error) {
+      console.error('Error submitting report:', error);
+      toast.error('Failed to submit report');
     }
   };
 
@@ -357,11 +655,12 @@ export default function HomePage() {
         <div className="flex gap-4">
           <Avatar className="w-10 h-10">
             <img 
-              src={profilePicture} 
+              src={getFullImageUrl(profilePicture)}
               alt="Profile" 
+              className="h-full w-full object-cover"
               onError={(e) => {
                 const img = e.target as HTMLImageElement;
-                img.src = DEFAULT_URL;
+                img.src = DEFAULT_AVATAR;
               }}
             />
           </Avatar>
@@ -483,13 +782,23 @@ export default function HomePage() {
 
       {posts.map((post) => (
         <Card key={post.id} className="p-4 mb-4 shadow-md post-card hover-scale transition-all">
+          {/* Post Header */}
           <div className="flex items-center gap-3 mb-4">
             <Avatar className="w-10 h-10">
-              <img src={post.avatar} alt={post.author} />
+              <img 
+                src={post.author.profilePicture} 
+                alt={post.author.username}
+                onError={(e) => {
+                  const img = e.target as HTMLImageElement;
+                  img.src = DEFAULT_AVATAR;
+                }}
+              />
             </Avatar>
             <div className="flex-1">
-              <h3 className="font-semibold">{post.author}</h3>
-              <p className="text-sm text-muted-foreground">{post.time}</p>
+              <h3 className="font-semibold">{post.author.username}</h3>
+              <p className="text-sm text-muted-foreground">
+                {timeAgo(post.createdAt)} {/* Pass the raw date string directly */}
+              </p>
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -498,11 +807,11 @@ export default function HomePage() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleReport('post', post.id)}>
                   <Flag className="h-4 w-4 mr-2" />
                   Report Post
                 </DropdownMenuItem>
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleReport('user', post.author.id)}>
                   <Flag className="h-4 w-4 mr-2" />
                   Report User
                 </DropdownMenuItem>
@@ -510,158 +819,257 @@ export default function HomePage() {
             </DropdownMenu>
           </div>
 
+          {/* Post Content */}
           <p className="mb-4">{post.content}</p>
 
-          {post.image && (
+          {/* Media Content */}
+          {post.mediaUrls && post.mediaUrls.length > 0 && (
             <div className="mb-4">
-              <img
-                src={post.image}
-                alt="Post"
-                className="w-full rounded-lg object-cover max-h-96"
-              />
+              <div className={`grid ${
+                post.mediaUrls.length === 1 ? 'grid-cols-1' : 
+                post.mediaUrls.length === 2 ? 'grid-cols-2' :
+                post.mediaUrls.length === 3 ? 'grid-cols-2' :
+                'grid-cols-2'
+              } gap-2`}>
+                {post.mediaUrls.map((media, index) => (
+                  <div 
+                    key={media.id}
+                    className={`${
+                      post.mediaUrls.length === 3 && index === 0 ? 'col-span-2' : ''
+                    }`}
+                  >
+                    <img
+                      src={media.mediaUrl}
+                      alt={`Post media ${index + 1}`}
+                      className="rounded-lg w-full object-cover h-[250px]"
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
+          {/* Hashtags */}
           <div className="flex gap-2 mb-4">
-            {post.content.split(' ').filter(word => word.startsWith('#')).map((tag, index) => (
-              <Badge key={index} variant="secondary" className="hover-scale">
-                {tag}
-              </Badge>
-            ))}
+            {post.content.split(' ')
+              .filter(word => word.startsWith('#'))
+              .map((tag, index) => (
+                <Badge key={index} variant="secondary" className="hover-scale">
+                  {tag}
+                </Badge>
+              ))}
           </div>
 
           <Separator className="my-4" />
 
+          {/* Interaction Buttons */}
           <div className="flex justify-between">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => handleLike(post.id)}
-              className={post.liked ? "text-red-500" : ""}
-            >
-              <Heart className={`h-4 w-4 mr-2 ${post.liked ? "fill-current text-red-500" : ""}`} />
-              {post.likes}
-            </Button>
+            <div className="flex items-center">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleLikeClick(post.id)}
+                className="hover:text-primary p-0 mr-1"
+              >
+                <Heart 
+                  className={`h-4 w-4 ${
+                    post.likedBy.some(like => like.user.username === userProfile.name)
+                      ? 'fill-current text-primary'
+                      : ''
+                  }`} 
+                />
+              </Button>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="p-0 hover:text-primary"
+                  >
+                    <span>{post.reactions}</span>
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Liked by</DialogTitle>
+                  </DialogHeader>
+                  <ScrollArea className="h-[300px] pr-4">
+                    <div className="space-y-4">
+                      {post.likedBy.map((like) => (
+                        <div key={like.id} className="flex items-center gap-3">
+                          <Avatar className="h-8 w-8">
+                            <img 
+                              src={like.user.avatar} 
+                              alt={like.user.username}
+                              onError={(e) => {
+                                const img = e.target as HTMLImageElement;
+                                img.src = DEFAULT_AVATAR;
+                              }}
+                            />
+                          </Avatar>
+                          <div className="flex-1">
+                            <p className="font-medium">{like.user.username}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {timeAgo(like.createdAt)}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </DialogContent>
+              </Dialog>
+            </div>
 
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => handleComment(post.id)}
-            >
-              <MessageCircle className="h-4 w-4 mr-2" />
-              {post.comments}
-            </Button>
-
-            <Dialog>
+            <Dialog open={activeCommentDialog === post.id} onOpenChange={(open) => setActiveCommentDialog(open ? post.id : null)}>
               <DialogTrigger asChild>
-                <Button variant="ghost" size="sm">
-                  <Repeat className="h-4 w-4 mr-2" />
-                  {post.shares}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="hover:text-primary p-0 flex items-center gap-1"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  <span>{post.comments}</span>
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Share this post</DialogTitle>
+                  <DialogTitle>Comments</DialogTitle>
+                </DialogHeader>
+                <ScrollArea className="h-[400px] pr-4">
+                  <div className="space-y-4">
+                    {post.commentsList.map((comment) => (
+                      <div key={comment.id} className="space-y-2">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-8 w-8">
+                            <img src={comment.user.avatar} alt={comment.user.username} />
+                          </Avatar>
+                          <div className="flex-1">
+                            <p className="font-medium">{comment.user.username}</p>
+                            <p className="text-xs text-muted-foreground">{timeAgo(comment.createdAt)}</p>
+                          </div>
+                        </div>
+                        <p className="text-sm pl-11">{comment.content}</p>
+                        <Separator className="mt-4" />
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+                <div className="flex items-center mt-4">
+                  <Input
+                    placeholder="Add a comment..."
+                    value={commentText}
+                    onChange={(e) => setCommentText(e.target.value)}
+                    className="flex-1"
+                  />
+                  <Button
+                    onClick={() => submitComment(post.id)}
+                    className="ml-2"
+                  >
+                    Post
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="hover:text-primary"
+                >
+                  <Repeat className="h-4 w-4" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>Share Post</DialogTitle>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
-                  <p className="text-sm text-muted-foreground">
-                    Share this post with your followers or on other platforms
-                  </p>
-                  <div className="flex gap-2">
-                    <Button
-                      className="flex-1 hover-scale"
+                  <div className="flex items-center gap-4">
+                    <Button 
+                      variant="outline" 
+                      className="w-full"
                       onClick={() => {
-                        handleShare(post.id);
-                        // Close the dialog after sharing
-                        const closeButton = document.querySelector('[data-dialog-close]');
-                        if (closeButton instanceof HTMLElement) {
-                          closeButton.click();
-                        }
-                      }}
-                    >
-                      <Share2 className="h-4 w-4 mr-2" />
-                      Share now
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="flex-1 hover-scale"
-                      onClick={async () => {
-                        const url = `${window.location.origin}/post/${post.id}`;
-                        await navigator.clipboard.writeText(url);
+                        navigator.clipboard.writeText(`${window.location.origin}/post/${post.id}`);
                         toast.success('Link copied to clipboard!');
                       }}
                     >
                       <Copy className="h-4 w-4 mr-2" />
-                      Copy link
+                      Copy Link
+                    </Button>
+                    {typeof navigator.share === 'function' && (
+                      <Button 
+                        variant="outline" 
+                        className="w-full"
+                        onClick={() => handleShare(post.id)}
+                      >
+                        <Share2 className="h-4 w-4 mr-2" />
+                        Share
+                      </Button>
+                    )}
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <div className="flex-1">
+                      <Input 
+                        readOnly 
+                        value={`${window.location.origin}/post/${post.id}`}
+                        className="h-9"
+                      />
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText(`${window.location.origin}/post/${post.id}`);
+                        toast.success('Link copied!');
+                      }}
+                    >
+                      <Copy className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
               </DialogContent>
             </Dialog>
           </div>
-
-          <Dialog open={activeCommentId === post.id} onOpenChange={(open) => setActiveCommentId(open ? post.id : null)}>
-            <DialogContent className="sm:max-w-[500px]">
-              <DialogHeader>
-                <DialogTitle>Comments ({post.comments})</DialogTitle>
-              </DialogHeader>
-              <div className="max-h-[60vh] overflow-y-auto pr-4">
-                {/* Existing Comments */}
-                <div className="space-y-4 mb-4">
-                  {post.commentsList.map((comment) => (
-                    <div key={comment.id} className="flex gap-3 animate-fade-in">
-                      <Avatar className="w-8 h-8">
-                        <img src={comment.avatar} alt={comment.author} />
-                      </Avatar>
-                      <div className="flex-1">
-                        <div className="bg-muted p-3 rounded-lg">
-                          <div className="flex justify-between items-start mb-1">
-                            <h4 className="font-medium text-sm">{comment.author}</h4>
-                            <span className="text-xs text-muted-foreground">{comment.time}</span>
-                          </div>
-                          <p className="text-sm">{comment.content}</p>
-                        </div>
-                        <div className="flex gap-4 mt-1">
-                          <button className="text-xs text-muted-foreground hover:text-primary transition-colors">
-                            Like
-                          </button>
-                          <button className="text-xs text-muted-foreground hover:text-primary transition-colors">
-                            Reply
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Comment Input */}
-                <div className="flex gap-3 pt-4 border-t">
-                  <Avatar className="w-8 h-8">
-                    <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=100&auto=format&fit=crop" alt="User" />
-                  </Avatar>
-                  <div className="flex-1 space-y-2">
-                    <Input
-                      placeholder="Write a comment..."
-                      value={commentText}
-                      onChange={(e) => setCommentText(e.target.value)}
-                      className="bg-muted/50"
-                    />
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        size="sm"
-                        onClick={() => submitComment(post.id)}
-                        disabled={!commentText.trim()}
-                      >
-                        Comment
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
         </Card>
       ))}
+
+      {/* Add the Report Dialog after the post cards */}
+      <Dialog open={reportDialogOpen} onOpenChange={setReportDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Report {reportType === 'post' ? 'Post' : 'User'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <Textarea
+              placeholder="Please provide a reason for reporting..."
+              value={reportReason}
+              onChange={(e) => setReportReason(e.target.value)}
+              className="min-h-[100px]"
+            />
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setReportDialogOpen(false);
+                  setReportReason('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={submitReport}
+                disabled={!reportReason.trim()}
+              >
+                Submit Report
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

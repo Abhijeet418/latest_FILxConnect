@@ -24,6 +24,8 @@ export default function PendingApprovalPage() {
         console.log(res.status)
         if (res?.status === 1) {
           router.push('/home');
+        }else if(res?.status === 0){
+          router.push('/blocked');
         }
       } catch (error) {
         console.error('Error fetching approval status:', error);
@@ -58,7 +60,7 @@ export default function PendingApprovalPage() {
       <div className="text-center space-y-2">
         <h1 className="text-2xl font-bold tracking-tight animate-slide-up">Account Pending Approval</h1>
         <p className="text-sm text-muted-foreground max-w-sm animate-slide-up" style={{ animationDelay: '0.1s' }}>
-          Your account is being reviewed. We'll notify you once approved.
+          Your account is being reviewed. We`ll notify you once approved.
         </p>
       </div>
 
@@ -77,10 +79,10 @@ export default function PendingApprovalPage() {
         <div className="bg-card p-4 rounded-lg shadow-sm border hover-scale">
           <div className="flex items-center space-x-2 mb-2">
             <CheckCircle className="h-5 w-5 text-green-500" />
-            <h3 className="font-semibold text-sm">What's Next?</h3>
+            <h3 className="font-semibold text-sm">What`s Next?</h3>
           </div>
           <p className="text-xs text-muted-foreground">
-            Once approved, you'll get full access to your personalized feed.
+            Once approved, you`ll get full access to your personalized feed.
           </p>
         </div>
 

@@ -23,6 +23,7 @@ import { apiRequest } from '@/app/apiconnector/api';
 import { Badge } from '@/components/ui/badge';
 
 const DEFAULT_AVATAR = "https://res.cloudinary.com/djvat4mcp/image/upload/v1741357526/zybt9ffewrjwhq7tyvy1.png";
+const CLOUDINARY_BASE_URL = "https://res.cloudinary.com/djvat4mcp/image/upload/v1741357526/";
 
 interface Reaction {
   id: string;
@@ -56,6 +57,8 @@ interface Media {
 interface Post {
   id: string;
   content: string;
+  createdAt: string;
+  updatedAt?: string; // Make updatedAt optional since it might not always be present
   time: string;
   reactions: number;
   likedBy: Reaction[];
@@ -114,7 +117,7 @@ function timeAgo(dateString: string) {
 export default function ProfilePage() {
   const [userProfile, setUserProfile] = useState({
     name: '',
-    profilepic: DEFAULT_AVATAR,
+    profilePicture: DEFAULT_AVATAR,
     bio: '',
     userId: '',
     stats: {
@@ -169,10 +172,10 @@ export default function ProfilePage() {
             id: comment.id,
             user: {
               username: comment.user.username,
-              avatar: comment.user.profilePicture || DEFAULT_AVATAR
+              avatar: getFullImageUrl(comment.user.profilePicture) // Use the helper function
             },
             content: comment.content,
-            createdAt: new Date(comment.createdAt).toLocaleString()
+            createdAt: comment.createdAt // Store the raw timestamp
           }));
 
           // Add media fetch
@@ -183,7 +186,9 @@ export default function ProfilePage() {
           return {
             id: post.id,
             content: post.content,
-            time: timeAgo(post.createdAt), // Pass the raw date string directly
+            createdAt: post.createdAt,
+            updatedAt: post.updatedAt,
+            time: timeAgo(post.updatedAt || post.createdAt), // Use updatedAt if available
             reactions: likedBy.length,
             comments: formattedComments.length,
             commentsList: formattedComments,
@@ -196,6 +201,7 @@ export default function ProfilePage() {
           return {
             id: post.id,
             content: post.content,
+            createdAt: post.createdAt,
             time: timeAgo(post.createdAt), // Use timeAgo here as well
             reactions: 0,
             comments: 0,
@@ -302,16 +308,14 @@ export default function ProfilePage() {
         let userId = localStorage.getItem('userId') || "404";
         let userResponse = await apiRequest(`users/${userId}`,'GET');
         
-        // Update the profile picture from localStorage or API response
+        // Construct the full profile picture URL
         const profilePicture = localStorage.getItem("profile_picture") || 
-                             userResponse.profilePicture || 
-                             'https://res.cloudinary.com/djvat4mcp/image/upload/v1741243252/n4zfkrf62br7io8d2k0c.png';
+                             (userResponse.profilePicture ? CLOUDINARY_BASE_URL + userResponse.profilePicture : DEFAULT_AVATAR);
 
         setUserProfile(prev => ({
           ...prev,
           name: userResponse.username || userResponse.email?.split('@')[0] || 'Loading...',
-          avatar: profilePicture, // Use the profile picture from localStorage or API
-          profilepic: profilePicture, // Update both avatar and profilepic
+          profilePicture: profilePicture, // Use the constructed URL
           bio: userResponse.bio,
           userId: userResponse.id
         }));
@@ -366,20 +370,30 @@ export default function ProfilePage() {
       }
 
       const data = await response.json();
-      localStorage.setItem("profile_picture", data.secure_url);
+      const fullUrl = data.secure_url;
+      
+      // Extract just the filename from the Cloudinary URL
+      const filename = fullUrl.split('/').pop(); // Gets just "zybt9ffewrjwhq7tyvy1.png"
+      
+      // Store the full URL in localStorage
+      localStorage.setItem("profile_picture", fullUrl);
 
-      // Update Firebase auth profile
+      // Update Firebase auth profile with full URL
       if (auth.currentUser) {
         await updateProfile(auth.currentUser, {
-          photoURL: data.secure_url
+          photoURL: fullUrl
         });
       }
 
-      // Update local state
+      // Update local state with full URL
       setUserProfile(prev => ({
         ...prev,
-        profilepic: data.secure_url
+        profilePicture: fullUrl
       }));
+
+      // Send only the filename to your API
+      let userId = localStorage.getItem('userId') || "404";
+      await apiRequest(`users/${userId}/updatePic/${filename}`, 'PUT');
 
       toast.success('Profile photo updated successfully');
     } catch (error) {
@@ -390,27 +404,32 @@ export default function ProfilePage() {
     }
   };
 
-  const handleProfileUpdate = async () => {
-    try {
-      // Here you would typically make an API call to update the profile
-      let userId = localStorage.getItem('userId') || "404";
-      const res = await apiRequest(`users/${userId}`,'PUT',{
-        username: editForm.name,
-        bio: editForm.bio
-      });
-      console.log(res)
-      setUserProfile(prev => ({
-        ...prev,
-        name: editForm.name,
-        bio: editForm.bio
-      }));
-      setIsEditDialogOpen(false);
-      toast.success('Profile updated successfully');
-    } catch (error) {
-      toast.error('Failed to update profile');
-      console.error(error);
+  // Update the handleProfileUpdate function to validate bio length
+const handleProfileUpdate = async () => {
+  try {
+    if (editForm.bio.length > 20) {
+      toast.error('Bio must be 20 characters or less');
+      return;
     }
-  };
+
+    let userId = localStorage.getItem('userId') || "404";
+    const res = await apiRequest(`users/${userId}`,'PUT',{
+      username: editForm.name,
+      bio: editForm.bio
+    });
+
+    setUserProfile(prev => ({
+      ...prev,
+      name: editForm.name,
+      bio: editForm.bio
+    }));
+    setIsEditDialogOpen(false);
+    toast.success('Profile updated successfully');
+  } catch (error) {
+    toast.error('Failed to update profile');
+    console.error(error);
+  }
+};
 
   const handleLikeClick = async (postId: string) => {
     try {
@@ -455,7 +474,7 @@ export default function ProfilePage() {
                 id: Date.now().toString(),
                 user: {
                   username: userProfile.name,
-                  avatar: userProfile.profilepic
+                  avatar: userProfile.profilePicture
                 },
                 emoji: '👍',
                 createdAt: new Date().toLocaleString()
@@ -502,10 +521,10 @@ export default function ProfilePage() {
                 id: Date.now().toString(),
                 user: {
                   username: userProfile.name,
-                  avatar: userProfile.profilepic
+                  avatar: getFullImageUrl(userProfile.profilePicture) // Use the helper function
                 },
                 content: newComment,
-                createdAt: new Date().toLocaleString()
+                createdAt: new Date().toISOString() // Use ISO string for consistency
               };
               return {
                 ...post,
@@ -555,7 +574,7 @@ export default function ProfilePage() {
           <div className="relative mb-6 md:mb-0">
             <Avatar className="w-40 h-40 border-4 border-background shadow-xl hover:scale-105 transition-transform duration-200">
               <img
-                src={userProfile.profilepic}
+                src={userProfile.profilePicture}
                 alt={userProfile.name}
                 className="object-cover"
               />
@@ -618,14 +637,27 @@ export default function ProfilePage() {
                         <label htmlFor="bio" className="text-sm font-medium">
                           Bio
                         </label>
-                        <Textarea
-                          id="bio"
-                          value={editForm.bio}
-                          onChange={(e) => setEditForm({ ...editForm, bio: e.target.value })}
-                          placeholder="Tell us about yourself"
-                          className="col-span-3 resize-none"
-                          rows={4}
-                        />
+                        <div className="relative">
+                          <Textarea
+                            id="bio"
+                            value={editForm.bio}
+                            onChange={(e) => {
+                              const newValue = e.target.value;
+                              if (newValue.length <= 20) {
+                                setEditForm({ ...editForm, bio: newValue });
+                              }
+                            }}
+                            placeholder="Tell us about yourself (20 chars max)"
+                            className="col-span-3 resize-none pr-16"
+                            rows={4}
+                            maxLength={20}
+                          />
+                          <span className={`absolute bottom-2 right-2 text-xs ${
+                            editForm.bio.length === 20 ? 'text-destructive' : 'text-muted-foreground'
+                          }`}>
+                            {editForm.bio.length}/20
+                          </span>
+                        </div>
                       </div>
                     </div>
                     <div className="flex justify-end gap-2">
@@ -696,7 +728,7 @@ export default function ProfilePage() {
               {/* Post Header */}
               <div className="flex items-center gap-3 mb-4">
                 <Avatar className="w-10 h-10">
-                  <img src={userProfile.profilepic} alt={userProfile.name} />
+                  <img src={userProfile.profilePicture} alt={userProfile.name} />
                 </Avatar>
                 <div className="flex-1">
                   <h3 className="font-semibold">{userProfile.name}</h3>
@@ -782,12 +814,23 @@ export default function ProfilePage() {
                       <ScrollArea className="h-[300px] pr-4">
                         <div className="space-y-4">
                           {post.likedBy.map((rct) => (
-                            <div key={rct.user.username} className="flex items-center gap-3">
+                            <div key={rct.id} className="flex items-center gap-3">
                               <Avatar className="h-10 w-10">
-                                <img src={rct.user.avatar} alt={rct.user.username} />
+                                <img 
+                                  src={rct.user.avatar} 
+                                  alt={rct.user.username}
+                                  onError={(e) => {
+                                    const img = e.target as HTMLImageElement;
+                                    img.src = DEFAULT_AVATAR;
+                                  }}
+                                  className="h-full w-full object-cover"
+                                />
                               </Avatar>
                               <div className="flex-1">
                                 <p className="font-medium">{rct.user.username}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {timeAgo(rct.createdAt)}
+                                </p>
                               </div>
                             </div>
                           ))}
@@ -916,3 +959,10 @@ export default function ProfilePage() {
     </div>
   );
 }
+
+// Add or update the getFullImageUrl helper function if not already present:
+const getFullImageUrl = (profilePicture: string | null | undefined): string => {
+  if (!profilePicture) return DEFAULT_AVATAR;
+  if (profilePicture.startsWith('http')) return profilePicture;
+  return CLOUDINARY_BASE_URL + profilePicture;
+};

@@ -58,6 +58,7 @@ export default function SignupPage() {
     console.log(values);
 
     try {
+      localStorage.clear();
       const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
       const user = userCredential.user;
 

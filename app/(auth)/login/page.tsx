@@ -48,6 +48,7 @@ export default function LoginPage() {
     setError('');
 
     try {
+      localStorage.clear();
       // // Simulate API call
       // await new Promise(resolve => setTimeout(resolve, 1000));
       const res = await signInWithEmailAndPassword(auth, values.email, values.password);
@@ -66,7 +67,9 @@ export default function LoginPage() {
       console.log(user.id);
       if (user?.status === 1) {
         router.push('/home');
-      } else {
+      } else if (user?.status === 2) {
+        router.push('/blocked');
+      }else{
         router.push('/pending-approval');
       }
       // // For demo purposes, always redirect to pending-approval
@@ -192,7 +195,7 @@ export default function LoginPage() {
 
       <div className="mt-6 text-center animate-slide-up" style={{ animationDelay: '0.3s' }}>
         <span className="text-sm text-muted-foreground">
-          Don't have an account?{' '}
+          Don`t have an account?{' '}
           <Link href="/signup" className="text-primary hover:underline font-medium transition-all hover:text-primary/80">
             Sign up
           </Link>
