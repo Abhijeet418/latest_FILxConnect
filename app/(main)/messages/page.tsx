@@ -32,7 +32,7 @@ interface Message {
   content: string;
   createdAt: string;
   time: string;
-  isread: boolean;  // Changed from read to isread to match API
+  isRead: boolean;  // Changed from read to isread to match API
 }
 
 export default function MessagesPage() {
@@ -52,25 +52,64 @@ export default function MessagesPage() {
     return CLOUDINARY_BASE_URL + profilePicture;
   };
 
+  // Add this state to track updates
+  const [updateTrigger, setUpdateTrigger] = useState(0);
+  const [messageUpdateKey, setMessageUpdateKey] = useState(0);
+
+  // Update fetchConnections to fetch all users with conversations
   const fetchConnections = async () => {
     try {
       const userId = localStorage.getItem('userId') || "404";
-      const connections = await apiRequest(`followers/${userId}/followed`, 'GET') || [];
       
-      // Map connections to Contact interface
-      const contactsList = await Promise.all(connections.map(async (connection: any) => {
-        const userDetails = await apiRequest(`users/${connection.id}`, 'GET');
-        return {
-          id: userDetails.id,
-          name: userDetails.username,
-          avatar: getFullImageUrl(userDetails.profilePicture),
-          lastMessage: "No messages yet",
-          time: "Now",
-          unread: 0
-        };
-      }));
-
-      setContacts(contactsList);
+      // Get all messages for the current user
+      const allMessages = await apiRequest(`messages/user/${userId}`, 'GET') || [];
+      
+      // Extract unique user IDs from messages (both senders and receivers)
+      const uniqueUserIds = new Set(
+        allMessages.flatMap((msg: any) => [msg.senderId, msg.receiverId])
+          .filter((id: string) => id !== userId) // Remove current user's ID
+      );
+  
+      // Map unique users to Contact interface
+      const contactsList = await Promise.all(
+        Array.from(uniqueUserIds).map(async (value) => {
+          const userId = value as string;
+          const userDetails = await apiRequest(`users/${userId}`, 'GET');
+          
+          // Find the latest message with this user
+          const userMessages = allMessages.filter((msg: any) => 
+            msg.senderId === userId || msg.receiverId === userId
+          );
+          const latestMessage = userMessages.sort((a: any, b: any) => 
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          )[0];
+  
+          return {
+            id: userDetails.id,
+            name: userDetails.username,
+            avatar: getFullImageUrl(userDetails.profilePicture),
+            bio: userDetails.bio || 'No bio available',
+            lastMessage: latestMessage?.content || "No messages yet",
+            time: latestMessage ? new Date(latestMessage.createdAt).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit'
+            }) : "Never",
+            unread: userMessages.filter((msg: any) => 
+              msg.receiverId === userId && !msg.isread
+            ).length,
+            online: false // You can update this if you have online status functionality
+          };
+        })
+      );
+  
+      // Sort contacts by latest message time
+      const sortedContacts = contactsList.sort((a, b) => {
+        const timeA = a.time === "Never" ? 0 : new Date(a.time).getTime();
+        const timeB = b.time === "Never" ? 0 : new Date(b.time).getTime();
+        return timeB - timeA;
+      });
+  
+      setContacts(sortedContacts);
     } catch (error) {
       console.error('Error fetching connections:', error);
       toast.error('Failed to load contacts');
@@ -78,43 +117,50 @@ export default function MessagesPage() {
   };
 
   // Update fetchLatestMessages function
-  const fetchLatestMessages = async () => {
+  // Update fetchLatestMessages function with debug logs
+const fetchLatestMessages = async () => {
     try {
       const userId = localStorage.getItem('userId') || "404";
-      const response = await apiRequest(`messages/user/${userId}`, 'GET');
+      const allMessages = await apiRequest(`messages/user/${userId}`, 'GET');
       
-      if (response) {
+      console.log('All messages received:', allMessages);
+      
+      if (allMessages) {
         setContacts(prevContacts => 
           prevContacts.map(contact => {
-            // Find all messages with this contact
-            const messages = response.filter((msg: any) => 
-              msg.senderId === contact.id || msg.receiverId === contact.id
+            // Get all messages between current user and this contact
+            const contactMessages = allMessages.filter((msg: any) => 
+              (msg.senderId === contact.id && msg.receiverId === userId) || 
+              (msg.senderId === userId && msg.receiverId === contact.id)
             );
             
-            // Sort messages by timestamp to get the latest one
-            const sortedMessages = messages.sort((a: any, b: any) => 
-              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-            );
+            console.log(`Messages with ${contact.name}:`, contactMessages);
             
-            const latestMessage = sortedMessages[0];
+            // Only count unread messages FROM contact TO current user
+            const unreadCount = contactMessages.filter((msg: any) => 
+              msg.senderId === contact.id && 
+              msg.receiverId === userId && 
+              !msg.isRead
+            ).length;
             
-            if (latestMessage) {
-              // Only count unread messages TO us (where we are the receiver)
-              const unreadCount = messages.filter((msg: any) => 
-                msg.receiverId === userId && !msg.isread
-              ).length;
-              
-              return {
-                ...contact,
-                lastMessage: latestMessage.content,
-                time: new Date(latestMessage.createdAt).toLocaleTimeString([], {
-                  hour: '2-digit',
-                  minute: '2-digit'
-                }),
-                unread: unreadCount
-              };
-            }
-            return contact;
+            console.log(`Unread count for ${contact.name}:`, {
+              total: contactMessages.length,
+              unread: unreadCount,
+              fromContact: contactMessages.filter((msg: { senderId: string; }) => msg.senderId === contact.id).length,
+              unreadFromContact: contactMessages.filter((msg: { senderId: string; isRead: any; }) => 
+                msg.senderId === contact.id && !msg.isRead
+              ).length
+            });
+
+            return {
+              ...contact,
+              lastMessage: contactMessages[0]?.content || "No messages yet",
+              time: contactMessages[0] ? new Date(contactMessages[0].createdAt).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit'
+              }) : "Never",
+              unread: unreadCount
+            };
           })
         );
       }
@@ -176,35 +222,55 @@ export default function MessagesPage() {
     contact.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
   
+  // Update the markMessagesAsRead function
   const markMessagesAsRead = async (messages: Message[]) => {
     try {
       const userId = localStorage.getItem('userId') || "404";
-      // Filter messages that are from the other user and unread
       const unreadMessages = messages.filter(msg => 
-        msg.senderId !== userId && !msg.isread
+        msg.senderId !== userId && !msg.isRead
       );
   
-      // Mark each message as read
+      if (unreadMessages.length === 0) return;
+  
+      // Mark messages as read in backend
       await Promise.all(unreadMessages.map(async (msg) => {
         await apiRequest(`messages/mark/${msg.id}`, 'PUT');
       }));
   
-      // Update local message states to reflect changes
+      // Update local message states
       setMessages(prevMessages => 
         prevMessages.map(msg => ({
           ...msg,
-          isread: msg.senderId !== userId ? true : msg.isread
+          isread: msg.senderId !== userId ? true : msg.isRead
         }))
       );
+  
+      // Trigger a full refresh of messages and contacts
+      await fetchLatestMessages();
+      setUpdateTrigger(prev => prev + 1);
+      setMessageUpdateKey(prev => prev + 1);
+  
     } catch (error) {
       console.error('Error marking messages as read:', error);
       toast.error('Failed to mark messages as read');
     }
   };
   
+  // Update the useEffect for periodic refresh
+  useEffect(() => {
+    const refreshInterval = setInterval(async () => {
+      if (activeContact) {
+        await fetchConversation(activeContact.id);
+      }
+      await fetchLatestMessages();
+    }, 3000); // Refresh more frequently
+  
+    return () => clearInterval(refreshInterval);
+  }, [activeContact, messageUpdateKey]);
+  
+  // Update the selectContact function
   const selectContact = async (contact: Contact) => {
     try {
-      // Fetch user details including bio
       const userDetails = await apiRequest(`users/${contact.id}`, 'GET');
       
       setActiveContact({
@@ -212,23 +278,18 @@ export default function MessagesPage() {
         bio: userDetails.bio || 'No bio available'
       });
       
-      // Load conversation history
+      // Load conversation first
       await fetchConversation(contact.id);
       
-      // Mark messages as read after loading conversation
+      // Then mark messages as read
       await markMessagesAsRead(messages);
       
-      // Update contacts list to reflect read status
-      setContacts(prevContacts => 
-        prevContacts.map(c => 
-          c.id === contact.id ? { ...c, unread: 0 } : c
-        )
-      );
+      // Force refresh everything
+      setUpdateTrigger(prev => prev + 1);
   
     } catch (error) {
-      console.error('Error fetching user details:', error);
-      toast.error('Failed to load user details');
-      setActiveContact(contact);
+      console.error('Error selecting contact:', error);
+      toast.error('Failed to load conversation');
     }
   };
   
@@ -253,7 +314,7 @@ export default function MessagesPage() {
           content: newMessage,
           createdAt: response.createdAt,
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          isread: false
+          isRead: false
         };
         
         setMessages([...messages, newMsg]);
@@ -302,7 +363,7 @@ export default function MessagesPage() {
           hour: '2-digit', 
           minute: '2-digit' 
         }),
-        isread: msg.isread || false
+        isRead: msg.isread || false
       }));
       
       // Sort messages by timestamp
@@ -323,6 +384,8 @@ export default function MessagesPage() {
             : c
         )
       );
+      await fetchLatestMessages();
+      setMessageUpdateKey(prev => prev + 1);
       
     } catch (error) {
       console.error('Error fetching conversation:', error);

@@ -20,6 +20,11 @@ import { toast } from 'sonner';
 import { apiRequest } from '@/app/apiconnector/api';
 import { title } from 'node:process';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 
 const DEFAULT_URL = "https://res.cloudinary.com/djvat4mcp/image/upload/v1741357526/zybt9ffewrjwhq7tyvy1.png";
 
@@ -308,10 +313,15 @@ const fetchConnectionPosts = async () => {
       }
     })).then(posts => posts.filter((post) => post !== null));
 
-    // Sort by date (newest first)
-    return enrichedPosts.sort((a, b) => 
-      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+    // Filter out null posts and sort by date (newest first)
+    const validPosts = enrichedPosts
+      .sort((a, b) => {
+        const dateA = new Date(a.createdAt).getTime();
+        const dateB = new Date(b.createdAt).getTime();
+        return dateB - dateA; // Sort in descending order (newest first)
+      });
+
+    return validPosts;
 
   } catch (error) {
     console.error('Error fetching posts:', error);
@@ -351,6 +361,17 @@ const fetchConnectionPosts = async () => {
     };
     loadPosts();
   }, []);
+
+  // Add a useEffect to keep posts sorted when they update
+  useEffect(() => {
+    setPosts(prevPosts => 
+      [...prevPosts].sort((a, b) => {
+        const dateA = new Date(a.createdAt).getTime();
+        const dateB = new Date(b.createdAt).getTime();
+        return dateB - dateA;
+      })
+    );
+  }, [posts.length]); // Re-sort when posts array length changes
 
   const handlePostSubmit = async () => {
     if (!newPost.trim() && selectedFiles.length === 0) return;
@@ -536,46 +557,50 @@ const fetchConnectionPosts = async () => {
     }
   };
 
-  const submitComment = async (postId: string) => {
-    if (!commentText.trim()) return;
-  
-    try {
-      const userId = localStorage.getItem('userId');
-      if (!userId) {
-        toast.error('User not logged in');
-        return;
-      }
-  
-      let newComment = commentText.trim();
-      const response = await apiRequest(`comments?postId=${postId}&userId=${userId}&content=${newComment}`, 'POST');
-      if (response) {
-        setPosts(prevPosts => prevPosts.map(post => {
-          if (post.id === postId) {
-            return {
-              ...post,
-              comments: post.comments + 1,
-              commentsList: [{
-                id: response.id,
-                user: {
-                  username: userProfile.name,
-                  avatar: userProfile.profilePicture
-                },
-                content: commentText.trim(),
-                createdAt: new Date().toLocaleString()
-              }, ...post.commentsList]
-            };
-          }
-          return post;
-        }));
-  
-        setCommentText('');
-        toast.success('Comment added successfully');
-      }
-    } catch (error) {
-      console.error('Failed to add comment:', error);
-      toast.error('Failed to add comment');
+  // Update the submitComment function to include proper ID generation
+const submitComment = async (postId: string) => {
+  if (!commentText.trim()) return;
+
+  try {
+    const userId = localStorage.getItem('userId');
+    if (!userId) {
+      toast.error('User not logged in');
+      return;
     }
-  };
+
+    let newComment = commentText.trim();
+    const response = await apiRequest(`comments?postId=${postId}&userId=${userId}&content=${newComment}`, 'POST');
+    
+    if (response) {
+      const newCommentObj = {
+        id: response.id || `temp-${Date.now()}`, // Ensure unique ID
+        user: {
+          username: userProfile.name,
+          avatar: userProfile.profilePicture
+        },
+        content: commentText.trim(),
+        createdAt: new Date().toISOString()
+      };
+
+      setPosts(prevPosts => prevPosts.map(post => {
+        if (post.id === postId) {
+          return {
+            ...post,
+            comments: post.comments + 1,
+            commentsList: [newCommentObj, ...post.commentsList]
+          };
+        }
+        return post;
+      }));
+
+      setCommentText('');
+      toast.success('Comment added successfully');
+    }
+  } catch (error) {
+    console.error('Failed to add comment:', error);
+    toast.error('Failed to add comment');
+  }
+};
 
   const addEmoji = (emoji: string) => {
     setNewPost(prev => prev + emoji);
@@ -736,28 +761,37 @@ const fetchConnectionPosts = async () => {
                   disabled={selectedFiles.length >= 4}
                 >
                   <Image className="w-4 h-4 mr-2 text-primary" />
-                  Photo
-                </Button>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={() => videoInputRef.current?.click()} 
-                  className="hover-scale"
-                  disabled={selectedFiles.length >= 1}
-                >
-                  <Video className="w-4 h-4 mr-2 text-primary" />
-                  Video
+                
                 </Button>
                 <div className="relative inline-block">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                    className="hover-scale"
-                  >
-                    <Smile className="w-4 h-4 mr-2 text-primary" />
-                  </Button>
-                  {/* ...emoji picker code... */}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="hover-scale"
+                      >
+                        <Smile className="w-4 h-4 mr-2 text-primary" />
+                      
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-full p-2">
+                      <div className="grid grid-cols-4 gap-2">
+                        {emojis.map((emoji) => (
+                          <Button
+                            key={emoji}
+                            variant="ghost"
+                            className="h-8 w-8 p-0 hover:bg-accent"
+                            onClick={() => {
+                              setNewPost(prev => prev + emoji);
+                            }}
+                          >
+                            {emoji}
+                          </Button>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 </div>
               </div>
 
@@ -939,21 +973,31 @@ const fetchConnectionPosts = async () => {
                 </DialogHeader>
                 <ScrollArea className="h-[400px] pr-4">
                   <div className="space-y-4">
-                    {post.commentsList.map((comment) => (
-                      <div key={comment.id} className="space-y-2">
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-8 w-8">
-                            <img src={comment.user.avatar} alt={comment.user.username} />
-                          </Avatar>
-                          <div className="flex-1">
-                            <p className="font-medium">{comment.user.username}</p>
-                            <p className="text-xs text-muted-foreground">{timeAgo(comment.createdAt)}</p>
+                    {post.commentsList.map((comment) => {
+                      const commentKey = comment.id || `comment-${Date.now()}-${Math.random()}`;
+                      return (
+                        <div key={commentKey} className="space-y-2">
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-8 w-8">
+                              <img 
+                                src={comment.user.avatar} 
+                                alt={comment.user.username}
+                                onError={(e) => {
+                                  const img = e.target as HTMLImageElement;
+                                  img.src = DEFAULT_AVATAR;
+                                }}
+                              />
+                            </Avatar>
+                            <div className="flex-1">
+                              <p className="font-medium">{comment.user.username}</p>
+                              <p className="text-xs text-muted-foreground">{timeAgo(comment.createdAt)}</p>
+                            </div>
                           </div>
+                          <p className="text-sm pl-11">{comment.content}</p>
+                          <Separator className="mt-4" />
                         </div>
-                        <p className="text-sm pl-11">{comment.content}</p>
-                        <Separator className="mt-4" />
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </ScrollArea>
                 <div className="flex items-center mt-4">

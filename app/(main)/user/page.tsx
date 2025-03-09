@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Avatar } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
-import { Camera, Edit, Heart, MessageCircle, Repeat, Share, Link as LinkIcon, Copy } from 'lucide-react';
+import { Camera, Edit, Heart, MessageCircle, Repeat, Share, Link as LinkIcon, Copy, UserMinus } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -135,6 +135,19 @@ export default function ProfilePage() {
   const [activeCommentsPost, setActiveCommentsPost] = useState<string | null>(null);
   const [newComment, setNewComment] = useState('');
 
+  // Add this state to store current user info
+  const [currentUser, setCurrentUser] = useState({
+    id: '',
+    username: '',
+    profilePicture: DEFAULT_AVATAR
+  });
+
+  // Add this state
+  const [isFollowing, setIsFollowing] = useState(false);
+
+  // Add this state
+  const [isOwnProfile, setIsOwnProfile] = useState(false);
+
   const fetchUserPosts = async () => {
     try {
       let viewUserId = localStorage.getItem('viewUserId') || "404";
@@ -155,6 +168,7 @@ export default function ProfilePage() {
                     return {
                       id: r.id,
                       user: {
+                        id: r.userId, // Add the userId here
                         username: userDetails.status === 0 ? 'Blocked User' : userDetails.username,
                         avatar: userDetails.status === 0 ? DEFAULT_AVATAR : getFullImageUrl(userDetails.profilePicture)
                       },
@@ -165,7 +179,8 @@ export default function ProfilePage() {
           
                   // Get comments with user details
                   const comments = await apiRequest(`comments/${post.id}`, 'GET') || [];
-                  const enrichedComments = await Promise.all((comments || []).map(async (comment: any) => {
+                  const commentsArray = Array.isArray(comments) ? comments : [];
+                  const enrichedComments = await Promise.all((commentsArray || []).map(async (comment: any) => {
                     return {
                       id: comment.id,
                       user: {
@@ -298,6 +313,53 @@ export default function ProfilePage() {
     }
   };
 
+  // Add this function to check following status
+  const checkFollowingStatus = async () => {
+    try {
+      const currentUserId = localStorage.getItem('userId');
+      const viewUserId = localStorage.getItem('viewUserId');
+      
+      // Don't check if viewing own profile
+      if (currentUserId === viewUserId) {
+        return;
+      }
+  
+      const followedUsers = await apiRequest(`followers/${currentUserId}/followed`, 'GET');
+      const isFollowed = followedUsers.some((user: any) => user.id === viewUserId);
+      setIsFollowing(isFollowed);
+    } catch (error) {
+      console.error('Error checking following status:', error);
+    }
+  };
+
+  // Add the unfollow handler
+  const handleUnfollow = async () => {
+    try {
+      const currentUserId = localStorage.getItem('userId');
+      const viewUserId = localStorage.getItem('viewUserId');
+  
+      const response = await apiRequest(
+        `followers/unfollow?followerId=${currentUserId}&followingId=${viewUserId}`,
+        'DELETE'
+      );
+  
+      if (response !== undefined) {
+        setIsFollowing(false);
+        setUserProfile(prev => ({
+          ...prev,
+          stats: {
+            ...prev.stats,
+            followers: prev.stats.followers - 1
+          }
+        }));
+        toast.success('Unfollowed successfully');
+      }
+    } catch (error) {
+      console.error('Error unfollowing user:', error);
+      toast.error('Failed to unfollow user');
+    }
+  };
+
   useEffect(() => {
     const fetchUserData = async () => {
       try {
@@ -320,6 +382,7 @@ export default function ProfilePage() {
         fetchFollowerCounts();
         fetchPostCount();
         fetchUserPosts();
+        await checkFollowingStatus(); // Add this line
       } catch (error) {
         console.error('Error fetching user data:', error);
         toast.error('Failed to load user profile');
@@ -329,27 +392,47 @@ export default function ProfilePage() {
     fetchUserData();
   }, []);
 
+  // Add this to your initial useEffect
+  useEffect(() => {
+    const fetchCurrentUser = async () => {
+      const userId = localStorage.getItem('userId');
+      if (userId) {
+        const userData = await apiRequest(`users/${userId}`, 'GET');
+        setCurrentUser({
+          id: userData.id,
+          username: userData.username,
+          profilePicture: getFullImageUrl(userData.profilePicture)
+        });
+      }
+    };
+    fetchCurrentUser();
+  }, []);
+
+  // Add this useEffect to handle localStorage check
+  useEffect(() => {
+    const currentUserId = localStorage.getItem('userId');
+    setIsOwnProfile(currentUserId === userProfile.userId);
+  }, [userProfile.userId]);
+
   const handleLikeClick = async (postId: string) => {
     try {
-      let userId = localStorage.getItem('userId') || "404";
+      const userId = localStorage.getItem('userId') || "404";
       
       // Check if user already liked the post
-      const currentPost = posts.find(p => p.id === postId.toString());
-      const hasLiked = currentPost?.likedBy.some(like => like.user.username === userProfile.name);
+      const post = posts.find(p => p.id === postId);
+      const hasLiked = post?.likedBy.some(like => like.user.id === userId);
   
       if (hasLiked) {
-        // Unlike the post
         const unlikeResponse = await apiRequest(`reactions/${postId}/${userId}`, 'DELETE');
         
         if (unlikeResponse !== undefined) {
-          // Update state to remove the like
           setPosts(prevPosts => 
             prevPosts.map(post => {
-              if (post.id === postId.toString()) {
+              if (post.id === postId) {
                 return {
                   ...post,
                   reactions: post.reactions - 1,
-                  likedBy: post.likedBy.filter(like => like.user.username !== userProfile.name)
+                  likedBy: post.likedBy.filter(like => like.user.id !== userId)
                 };
               }
               return post;
@@ -360,25 +443,23 @@ export default function ProfilePage() {
         return;
       }
   
-      // Add the like
       const likeResponse = await apiRequest(`reactions/${postId}/${userId}/👍`, 'POST');
       
       if (likeResponse) {
-        // Update state to add the like
+        const newLike = {
+          id: Date.now().toString(),
+          user: {
+            id: userId, // Use userId instead of currentUser.id
+            username: currentUser.username,
+            avatar: currentUser.profilePicture
+          },
+          emoji: '👍',
+          createdAt: new Date().toISOString()
+        };
+        
         setPosts(prevPosts => 
           prevPosts.map(post => {
             if (post.id === postId) {
-              const newLike = {
-                id: Date.now().toString(),
-                user: {
-                  id: userProfile.userId, // Add this
-                  username: userProfile.name,
-                  avatar: userProfile.profilePicture
-                },
-                emoji: '👍',
-                createdAt: new Date().toLocaleString()
-              };
-              
               return {
                 ...post,
                 reactions: post.reactions + 1,
@@ -412,20 +493,20 @@ export default function ProfilePage() {
       console.log(response);
   
       if (response) {
-        // Add new comment to the state
+        const newCommentObj = {
+          id: response.id || Date.now().toString(),
+          user: {
+            id: currentUser.id,
+            username: currentUser.username,
+            avatar: currentUser.profilePicture
+          },
+          content: newComment,
+          createdAt: new Date().toISOString()
+        };
+  
         setPosts(prevPosts =>
           prevPosts.map(post => {
             if (post.id === postId) {
-              const newCommentObj = {
-                id: Date.now().toString(),
-                user: {
-                  id: userProfile.userId, // Add this
-                  username: userProfile.name,
-                  avatar: getFullImageUrl(userProfile.profilePicture) // Use the helper function
-                },
-                content: newComment,
-                createdAt: new Date().toISOString() // Use ISO string for consistency
-              };
               return {
                 ...post,
                 comments: post.comments + 1,
@@ -436,7 +517,7 @@ export default function ProfilePage() {
           })
         );
   
-        setNewComment(''); // Clear input
+        setNewComment('');
         toast.success('Comment added successfully');
       }
     } catch (error) {
@@ -493,35 +574,36 @@ export default function ProfilePage() {
                 <h1 className="text-3xl font-bold mb-2">{userProfile.name}</h1>
                 <p className="text-muted-foreground">{userProfile.bio}</p>
               </div>
+              <div className="flex items-center gap-2 mt-4 md:mt-0">
+                {/* Message Button - Always visible */}
+                <Button
+                  variant="outline"
+                  className="hover:text-primary"
+                  onClick={() => {
+                    localStorage.setItem('messageUserId', userProfile.userId);
+                    localStorage.setItem('messageUserName', userProfile.name);
+                    localStorage.setItem('messageUserAvatar', userProfile.profilePicture);
+                    window.location.href = '/messages';
+                  }}
+                >
+                  <MessageCircle className="h-4 w-4 mr-2" />
+                  Message
+                </Button>
+
+                {/* Unfollow Button - Only visible if not own profile and following */}
+                {!isOwnProfile && isFollowing && (
+                  <Button
+                    variant="outline"
+                    onClick={handleUnfollow}
+                  >
+                    <UserMinus className="h-4 w-4 mr-2" />
+                    Unfollow
+                  </Button>
+                )}
+              </div>
             </div>
 
-            {/* Stats */}
-            <div className="flex gap-6 justify-center md:justify-start mt-6">
-              <div className="text-center md:text-left">
-                <div className="text-2xl font-bold">{userProfile.stats.posts}</div>
-                <div className="text-sm text-muted-foreground">Posts</div>
-              </div>
-              <div className="text-center md:text-left">
-                <div className="text-2xl font-bold">{userProfile.stats.followers}</div>
-                <div className="text-sm text-muted-foreground">Followers</div>
-              </div>
-              <div className="text-center md:text-left">
-                <div className="text-2xl font-bold">{userProfile.stats.following}</div>
-                <div className="text-sm text-muted-foreground">Following</div>
-              </div>
-              <div className="text-center md:text-left">
-                <div className={`text-2xl font-bold ${
-                  userProfile.stats.reports === 0 
-                    ? 'text-green-500' 
-                    : userProfile.stats.reports === 1 
-                      ? 'text-orange-500' 
-                      : 'text-destructive'
-                }`}>
-                  {userProfile.stats.reports}
-                </div>
-                <div className="text-sm text-muted-foreground">Reports</div>
-              </div>
-            </div>
+            {/* Rest of profile info */}
           </div>
         </div>
       </div>
@@ -597,8 +679,8 @@ export default function ProfilePage() {
                   >
                     <Heart 
                       className={`h-4 w-4 ${
-                        post.likedBy.some(like => like.user.username === userProfile.name)
-                          ? 'fill-current text-primary'
+                        post.likedBy.some(like => like.user.id === localStorage.getItem('userId'))
+                          ? 'fill-current text-red-500' 
                           : ''
                       }`} 
                     />

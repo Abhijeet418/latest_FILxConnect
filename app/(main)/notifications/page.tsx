@@ -71,16 +71,20 @@ export default function NotificationsPage() {
     return 'Just now';
   };
 
-  // Update the fetchNotifications function to ensure we always have an array
+  // Update the fetchNotifications function to ensure we always have an array and sort by createdAt
   const fetchNotifications = async () => {
     try {
       setIsLoading(true);
       const userId = localStorage.getItem('userId') || "404";
       const response = await apiRequest(`notifications/${userId}`, 'GET');
       
-      // Ensure response is an array
+      // Ensure response is an array and sort by createdAt
       const notificationsArray = Array.isArray(response) ? response : [];
-      setNotifications(notificationsArray);
+      const sortedNotifications = notificationsArray.sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      
+      setNotifications(sortedNotifications);
     } catch (error) {
       console.error('Error fetching notifications:', error);
       toast.error('Failed to fetch notifications');
@@ -204,32 +208,32 @@ export default function NotificationsPage() {
                       <div className="w-2 h-2 bg-primary rounded-full mr-2"></div>
                     )}
                     
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {!notification.read && (
-                          <DropdownMenuItem onClick={() => markAsRead(notification.id)}>
-                            Mark as read
-                          </DropdownMenuItem>
-                        )}
-                        {notification.postId && (
+                    {notification.postId && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {!notification.read && (
+                            <DropdownMenuItem onClick={() => markAsRead(notification.id)}>
+                              Mark as read
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => navigateToPost(notification.postId??"404")}
-                                >
-                                  <Eye className="h-5 w-5 mr-2" />
-                                  View Post
-                                </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => navigateToPost(notification.postId ?? "404")}
+                            >
+                              <Eye className="h-5 w-5 mr-2" />
+                              View Post
+                            </Button>
                           </DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
                   </div>
                 </div>
               </Card>

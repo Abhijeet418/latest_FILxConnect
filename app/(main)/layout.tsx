@@ -132,6 +132,15 @@ export default function MainLayout({
   // Add state for notification count
   const [notificationCount, setNotificationCount] = useState(0);
 
+  // Add state for unread messages count
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
+
+  // Add this state near your other state declarations
+  const [connectionUpdateTrigger, setConnectionUpdateTrigger] = useState(0);
+
+  // Add this state for tracking updates
+  const [notificationUpdateTrigger, setNotificationUpdateTrigger] = useState(0);
+
   useEffect(() => {
     let userId = localStorage.getItem('userId') || "404";
     const fetchSuggestedUser = async () => {
@@ -145,7 +154,7 @@ export default function MainLayout({
     }
 
     fetchSuggestedUser();
-  }, []); // Empty dependency array means this will only run once when component mounts
+  }, [connectionUpdateTrigger]); // Add connectionUpdateTrigger to dependencies
 
   const [myConnections, setMyConnections] = useState<Connection[]>([]);
 
@@ -193,11 +202,29 @@ export default function MainLayout({
     }
   };
 
+  // Add function to fetch unread messages count
+  const fetchUnreadMessagesCount = async () => {
+    try {
+      const userId = localStorage.getItem('userId') || "404";
+      const messages = await apiRequest(`messages/user/${userId}`, 'GET');
+      
+      // Count unread messages where current user is the receiver
+      const unreadCount = messages.filter((msg: any) => 
+        msg.receiverId === userId && !msg.isRead
+      ).length;
+      
+      setUnreadMessagesCount(unreadCount);
+    } catch (error) {
+      console.error('Error fetching unread messages:', error);
+      setUnreadMessagesCount(0);
+    }
+  };
+
   // Update the navigation array
   const navigation = [
     { name: 'Home', href: '/home', icon: Home, notifications: 0 },
     { name: 'Notifications', href: '/notifications', icon: Bell, notifications: notificationCount },
-    { name: 'Messages', href: '/messages', icon: MessageCircle, notifications: 0 },
+    { name: 'Messages', href: '/messages', icon: MessageCircle, notifications: unreadMessagesCount },
     { name: 'Profile', href: '/profile', icon: User, notifications: 0 },
     { name: 'My Posts', href: null, icon: PenSquare, notifications: 0 }, // Change href to null
   ];
@@ -216,18 +243,25 @@ export default function MainLayout({
     }
   };
 
+  // Update the sentTheConnectionReq function
   const sentTheConnectionReq = async (followingId: string, followerId: string) => {
-
     const dataToBeSend = {
       followerId,
       followingId
     };
-
+  
     try {
       const res = await apiRequest(`followers/follow?followerId=${followerId}&followingId=${followingId}`, "POST");
-      console.log("Response: ", res);
+      if (res) {
+        // Trigger refresh by incrementing the update counter
+        setConnectionUpdateTrigger(prev => prev + 1);
+        // Update local state
+        setSuggestedUser(prev => prev.filter(user => user.id.toString() !== followingId));
+        toast.success('Connection request sent successfully');
+      }
     } catch (error) {
-      console.log("Error: ", error);
+      console.error("Error: ", error);
+      toast.error('Failed to send connection request');
     }
   };
 
@@ -268,15 +302,19 @@ export default function MainLayout({
 
     fetchAllTheConnection();
     fetchNotificationCount();
+    fetchUnreadMessagesCount(); // Add this line
+
     const notificationInterval = setInterval(fetchNotificationCount, 30000);
+    const messageInterval = setInterval(fetchUnreadMessagesCount, 30000); // Add this line
 
     window.addEventListener('scroll', handleScroll);
     return () => {
       window.removeEventListener('scroll', handleScroll);
       unsubscribe();
       clearInterval(notificationInterval);
+      clearInterval(messageInterval); // Add this line
     };
-  }, []);
+  }, [connectionUpdateTrigger]); // Add connectionUpdateTrigger to dependencies
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -380,6 +418,31 @@ export default function MainLayout({
     localStorage.setItem('messageUserAvatar', getFullImageUrl(profilePicture));
     window.location.href = '/messages';
   };
+
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY > 10);
+
+    // Initial fetch
+    fetchAllTheConnection();
+    fetchNotificationCount();
+    fetchUnreadMessagesCount();
+
+    // Set up intervals for periodic updates
+    const notificationInterval = setInterval(() => {
+      fetchNotificationCount();
+      setNotificationUpdateTrigger(prev => prev + 1);
+    }, 5000); // Check every 5 seconds
+
+    const messageInterval = setInterval(fetchUnreadMessagesCount, 30000);
+
+    window.addEventListener('scroll', handleScroll);
+    
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      clearInterval(notificationInterval);
+      clearInterval(messageInterval);
+    };
+  }, [connectionUpdateTrigger]);
 
   return (
     <div className="min-h-screen bg-background">
