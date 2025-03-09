@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Bell, MoreHorizontal } from 'lucide-react';
+import { Bell, Eye, MoreHorizontal } from 'lucide-react';
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -15,6 +15,8 @@ import {
 import Link from 'next/link';
 import { apiRequest } from '@/app/apiconnector/api';
 import { toast } from 'react-toastify';
+import router from 'next/router';
+import { navigateToPost } from '@/lib/navigation';
 
 // Remove the NotificationType type and getNotificationIcon function since they're not needed
 interface Notification {
@@ -172,9 +174,7 @@ export default function NotificationsPage() {
                 onClick={() => {
                   if (!notification.read) {
                     markAsRead(notification.id);
-                  }
-                  if (notification.postId) {
-                    window.location.href = `/post/${notification.postId}`;
+                    navigateToPost(notification.postId??"404")
                   }
                 }}
               >
@@ -218,9 +218,14 @@ export default function NotificationsPage() {
                         )}
                         {notification.postId && (
                           <DropdownMenuItem asChild>
-                            <Link href={`/post/${notification.postId}`}>
-                              View post
-                            </Link>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => navigateToPost(notification.postId??"404")}
+                                >
+                                  <Eye className="h-5 w-5 mr-2" />
+                                  View Post
+                                </Button>
                           </DropdownMenuItem>
                         )}
                       </DropdownMenuContent>

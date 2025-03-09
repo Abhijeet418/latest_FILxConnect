@@ -31,6 +31,7 @@ import { auth } from '@/lib/Firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { set } from 'zod';
 import { toast } from 'react-toastify';
+import { navigateToUserProfile } from '@/lib/navigation';
 // import { timeAgo } from '@/utils/timeAgo';
 
 interface SuggestedUser {
@@ -373,6 +374,13 @@ export default function MainLayout({
 
   const showSidebars = !pathname?.includes('/landing');
 
+  const handleMessageClick = (userId: string, username: string, profilePicture: string) => {
+    localStorage.setItem('messageUserId', userId);
+    localStorage.setItem('messageUserName', username);
+    localStorage.setItem('messageUserAvatar', getFullImageUrl(profilePicture));
+    window.location.href = '/messages';
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -558,7 +566,8 @@ export default function MainLayout({
                 .map((connection) => (
                 <Link
                   key={connection.id}
-                  href={`/profile/${connection.id}`}
+                  href={`/user`}
+                  onClick={() => navigateToUserProfile(connection.id.toString())}
                   className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted transition-colors group"
                 >
                   <Avatar className="h-8 w-8">
@@ -761,12 +770,18 @@ export default function MainLayout({
                       
                     </div>
 
-                    <Button
-                      variant="ghost"
+                    <Button 
+                      variant="secondary"
                       size="sm"
-                      className="hover:bg-primary/10 hover:text-primary"
+                      className="hover-scale"
+                      onClick={() => handleMessageClick(
+                        connection.id.toString(),
+                        connection.username,
+                        connection.profilePicture
+                      )}
                     >
-                      <MessageCircle className="h-4 w-4" />
+                      <MessageCircle className="h-4 w-4 mr-1" />
+                      Message
                     </Button>
                   </div>
                 ))}
@@ -919,14 +934,6 @@ export default function MainLayout({
                               <Badge variant="outline" className="bg-green-50 text-green-600">Approved</Badge>
                             </div>
                             <p className="mb-4">{post.content}</p>
-                            <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                              <span className="flex items-center gap-1">
-                                <Heart className="h-4 w-4" /> {post.likes}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <MessageCircle className="h-4 w-4" /> {post.comments}
-                              </span>
-                            </div>
                           </Card>
                         ))
                     ) : (
@@ -949,9 +956,6 @@ export default function MainLayout({
                               <Badge variant="destructive">Rejected</Badge>
                             </div>
                             <p className="mb-4">{post.content}</p>
-                            {post.reason && (
-                              <p className="text-sm text-destructive">Reason: {post.reason}</p>
-                            )}
                           </Card>
                         ))
                     ) : (
@@ -983,7 +987,7 @@ export default function MainLayout({
                             </Badge>
                           </div>
                           <p className="mb-4">{post.content}</p>
-                          {post.status === "1" && (
+                          {/* {post.status === "1" && (
                             <div className="flex items-center gap-4 text-sm text-muted-foreground">
                               <span className="flex items-center gap-1">
                                 <Heart className="h-4 w-4" /> {post.likes}
@@ -992,7 +996,7 @@ export default function MainLayout({
                                 <MessageCircle className="h-4 w-4" /> {post.comments}
                               </span>
                             </div>
-                          )}
+                          )} */}
                           
                         </Card>
                       ))

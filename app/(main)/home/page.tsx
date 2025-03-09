@@ -265,15 +265,16 @@ const fetchConnectionPosts = async () => {
 
         // Get comments with user details
         const comments = await apiRequest(`comments/${post.id}`, 'GET') || [];
-        const enrichedComments = await Promise.all((comments || []).map(async (comment: any) => {
-          const commentUserDetails = await apiRequest(`users/${comment.userId}`, 'GET');
+        const commentsArray = Array.isArray(comments) ? comments : [];
+        const enrichedComments = await Promise.all((commentsArray || []).map(async (comment: any) => {
           return {
             id: comment.id,
             user: {
-              username: commentUserDetails.status === 0 ? 'Blocked User' : commentUserDetails.username,
-              avatar: commentUserDetails.status === 0 ? DEFAULT_AVATAR : getFullImageUrl(commentUserDetails.profilePicture)
+              id: comment.user.id,
+              username: comment.user.username,
+              avatar: getFullImageUrl(comment.user.profilePicture)
             },
-            content: commentUserDetails.status === 0 ? 'This comment is from a blocked user' : comment.content,
+            content: comment.content,
             createdAt: comment.createdAt
           };
         }));
@@ -305,7 +306,7 @@ const fetchConnectionPosts = async () => {
         console.error(`Error enriching post ${post.id}:`, error);
         return null;
       }
-    })).then(posts => posts.filter((post): post is Post => post !== null));
+    })).then(posts => posts.filter((post) => post !== null));
 
     // Sort by date (newest first)
     return enrichedPosts.sort((a, b) => 

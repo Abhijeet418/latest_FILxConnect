@@ -14,7 +14,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { navigateToUserProfile } from '@/lib/navigation';
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -29,7 +28,7 @@ const CLOUDINARY_BASE_URL = "https://res.cloudinary.com/djvat4mcp/image/upload/v
 interface Reaction {
   id: string;
   user: {
-    id: string;
+    id: string; // Add this
     username: string;
     avatar: string;
   };
@@ -37,11 +36,10 @@ interface Reaction {
   createdAt: string;
 }
 
-
 interface Comment {
   id: string;
   user: {
-    id: string;
+    id: string; // Add this
     username: string;
     avatar: string;
   };
@@ -131,13 +129,6 @@ export default function ProfilePage() {
     }
   });
 
-  const [isUpdatingPhoto, setIsUpdatingPhoto] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [editForm, setEditForm] = useState({
-    name: userProfile.name,
-    bio: userProfile.bio || ''
-  });
   const [posts, setPosts] = useState<Post[]>([]);
 
   const [activeLikesPost, setActiveLikesPost] = useState<string | null>(null);
@@ -146,86 +137,104 @@ export default function ProfilePage() {
 
   const fetchUserPosts = async () => {
     try {
-      let userId = localStorage.getItem('userId') || "404";
-      const rawPosts = await apiRequest(`posts/user/${userId}`) || [];
+      let viewUserId = localStorage.getItem('viewUserId') || "404";
+      const rawPosts = await apiRequest(`posts/user/${viewUserId}`) || [];
       
-      // Filter active posts
+      // Filter posts with status "1" before processing
       const activePosts = rawPosts.filter((post: any) => post.status === "1");
-      
-      // Enrich posts with full details
+      console.log(activePosts, 'activePosts');
+  
+      // Then update the post object creation in fetchUserPosts
       const enrichedPosts: Post[] = await Promise.all(activePosts.map(async (post: any) => {
         try {
-          // Get user details
-          const userDetails = await apiRequest(`users/${userId}`, 'GET');
-          
+          // Fetch reactions list first
           // Get reactions with user details
-          const reactionsList = await apiRequest(`reactions/posts/${post.id}`, 'GET') || [];
-          const enrichedReactions = await Promise.all(reactionsList.map(async (reaction: any) => {
-            const reactionUserDetails = await apiRequest(`users/${reaction.userId}`, 'GET');
-            return {
-              id: reaction.id,
-              user: {
-                id: reaction.userId,
-                username: reactionUserDetails.status === 0 ? 'Blocked User' : reactionUserDetails.username,
-                avatar: reactionUserDetails.status === 0 ? DEFAULT_AVATAR : getFullImageUrl(reactionUserDetails.profilePicture)
-              },
-              emoji: '👍',
-              createdAt: reaction.createdAt
-            };
-          }));
+                  const reactions = await apiRequest(`reactions/posts/${post.id}`, 'GET') || [];
+                  const enrichedReactions = await Promise.all(reactions.map(async (r: any) => {
+                    const userDetails = await apiRequest(`users/${r.userId}`, 'GET');
+                    return {
+                      id: r.id,
+                      user: {
+                        username: userDetails.status === 0 ? 'Blocked User' : userDetails.username,
+                        avatar: userDetails.status === 0 ? DEFAULT_AVATAR : getFullImageUrl(userDetails.profilePicture)
+                      },
+                      emoji: '👍',
+                      createdAt: r.createdAt
+                    };
+                  }));
+          
+                  // Get comments with user details
+                  const comments = await apiRequest(`comments/${post.id}`, 'GET') || [];
+                  const enrichedComments = await Promise.all((comments || []).map(async (comment: any) => {
+                    return {
+                      id: comment.id,
+                      user: {
+                        id: comment.user.id,
+                        username: comment.user.username,
+                        avatar: getFullImageUrl(comment.user.profilePicture)
+                      },
+                      content: comment.content,
+                      createdAt: timeAgo(comment.createdAt)
+                    };
+                  }));
 
-          // Get comments with user details
-          const commentsList = await apiRequest(`comments/${post.id}`, 'GET');
-          const commentsArray = Array.isArray(commentsList) ? commentsList : [];
-
-          const enrichedComments = await Promise.all(commentsArray.map(async (comment: any) => {
-            return {
-              id: comment.id,
-              user: {
-                id: comment.user.id,
-                username: comment.user.username,
-                avatar: getFullImageUrl(comment.user.profilePicture)
-              },
-              content: comment.content,
-              createdAt: timeAgo(comment.createdAt)
-            };
-          }));
-
-          // Get media
+          // Add media fetch
           const mediaResponse = await apiRequest(`media/${post.id}`, 'GET') || [];
-          const mediaList: Media[] = (mediaResponse || []).map((media: any) => ({
-            id: media.id,
-            mediaUrl: getFullImageUrl(media.mediaUrl),
-            mediaType: media.mediaType || 'image',
-            postId: media.postId
-          }));
-
-          // Return enriched post object
+          const mediaList: Media[] = Array.isArray(mediaResponse) ? mediaResponse : [];
+  
+          // Return formatted post object
+          return {
+            id: post.id,
+            author: {
+              id: post.user.id,
+              username: userProfile.name,
+              profilePicture: getFullImageUrl(userProfile.profilePicture)
+            },
+            content: post.content,
+            createdAt: timeAgo(post.createdAt),
+            reactions: enrichedReactions.length,
+            likedBy: enrichedReactions,
+            comments: enrichedComments.length,
+            commentsList: enrichedComments,
+            mediaUrls: (mediaList || []).map((m: any) => ({
+              id: m.id,
+              mediaUrl: getFullImageUrl(m.mediaUrl),
+              mediaType: m.mediaType || 'image',
+              postId: m.postId
+            }))
+          };
+  
+        } catch (error) {
+          console.error(`Error fetching additional data for post ${post.id}:`, error);
           return {
             id: post.id,
             content: post.content,
             createdAt: post.createdAt,
-            updatedAt: post.updatedAt,
-            time: timeAgo(post.updatedAt || post.createdAt),
-            reactions: enrichedReactions.length,
-            comments: enrichedComments.length,
-            commentsList: enrichedComments,
-            likedBy: enrichedReactions,
-            mediaUrls: mediaList
+            time: timeAgo(post.createdAt), // Use timeAgo here as well
+            reactions: 0,
+            comments: 0,
+            commentsList: [],
+            likedBy: []
           };
-
-        } catch (error) {
-          console.error(`Error enriching post ${post.id}:`, error);
-          return null;
         }
       }));
-
-      // Filter out null posts and sort by date
-      const validPosts = enrichedPosts.filter((post): post is Post => post !== null)
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-      setPosts(validPosts);
-
+      
+      // // Sort posts by createdAt in descending order
+      // const sortedPosts = enrichedPosts.sort((a, b) => {
+      //   // Find original posts to get createdAt values
+      //   const postA = activePosts.find(p => p.id === a.id);
+      //   const postB = activePosts.find(p => p.id === b.id);
+        
+      //   // Convert dates to timestamps for comparison
+      //   const timeA = new Date(postA?.createdAt || 0).getTime();
+      //   const timeB = new Date(postB?.createdAt || 0).getTime();
+        
+      //   // Sort in descending order (newest first)
+      //   return timeB - timeA;
+      // });
+      
+      setPosts(enrichedPosts);
+  
     } catch (error) {
       console.error('Error fetching user posts:', error);
       toast.error('Failed to fetch user posts');
@@ -234,15 +243,11 @@ export default function ProfilePage() {
   };
 
   const fetchPostCount = async () => {
-    try{
-      let userId = localStorage.getItem('userId') || "404";
-      // const postCount = await apiRequest(`posts/user/${userId}/count`) || 0;
-      // let userId = localStorage.getItem('userId') || "404";
-      const rawPosts = await apiRequest(`posts/user/${userId}`) || [];
-      
-      // Filter posts with status "1" before processing
+    try {
+      let viewUserId = localStorage.getItem('viewUserId') || "404";
+      const rawPosts = await apiRequest(`posts/user/${viewUserId}`) || [];
       const activePosts = rawPosts.filter((post: any) => post.status === "1");
-      const reportCountRes = await apiRequest(`users/${userId}`) || null;
+      const reportCountRes = await apiRequest(`users/${viewUserId}`) || null;
     
       setUserProfile(prev => ({
         ...prev,
@@ -252,29 +257,21 @@ export default function ProfilePage() {
           reports: Number(reportCountRes.reports)
         }
       }));
-    }catch (error) {
+    } catch (error) {
       console.error('Error fetching post counts:', error);
       toast.error('Failed to fetch post counts');
-
-      // Set defaults in case of error
-      setUserProfile(prev => ({
-        ...prev,
-        stats: {
-          ...prev.stats,
-        }
-      }));
     }
-  }
+  };
 
   const fetchFollowerCounts = async () => {
     try {
-      let userId = localStorage.getItem('userId') || "404";
+      let viewUserId = localStorage.getItem('viewUserId') || "404";
       // Fetch followers count
-      const followersResponse = await apiRequest(`followers/${userId}/followers/count`, 'GET');
+      const followersResponse = await apiRequest(`followers/${viewUserId}/followers/count`, 'GET');
       const followersCount = followersResponse || 0;  // Extract the count from response
 
       // Fetch following count
-      const followingResponse = await apiRequest(`followers/${userId}/following/count`, 'GET');
+      const followingResponse = await apiRequest(`followers/${viewUserId}/following/count`, 'GET');
       const followingCount = followingResponse || 0;  // Extract the count from response
 
       setUserProfile(prev => ({
@@ -302,19 +299,20 @@ export default function ProfilePage() {
   };
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        let userId = localStorage.getItem('userId') || "404";
-        let userResponse = await apiRequest(`users/${userId}`,'GET');
+    const fetchUserData = async () => {
+      try {
+        let viewUserId = localStorage.getItem('viewUserId') || "404";
+        let userResponse = await apiRequest(`users/${viewUserId}`,'GET');
         
         // Construct the full profile picture URL
-        const profilePicture = localStorage.getItem("profile_picture") || 
-                             (userResponse.profilePicture ? CLOUDINARY_BASE_URL + userResponse.profilePicture : DEFAULT_AVATAR);
+        const profilePicture = userResponse.profilePicture ? 
+                             CLOUDINARY_BASE_URL + userResponse.profilePicture : 
+                             DEFAULT_AVATAR;
 
         setUserProfile(prev => ({
           ...prev,
-          name: userResponse.username || userResponse.email?.split('@')[0] || 'Loading...',
-          profilePicture: profilePicture, // Use the constructed URL
+          name: userResponse.username || 'User',
+          profilePicture: profilePicture,
           bio: userResponse.bio,
           userId: userResponse.id
         }));
@@ -322,113 +320,14 @@ export default function ProfilePage() {
         fetchFollowerCounts();
         fetchPostCount();
         fetchUserPosts();
-
-        setEditForm({
-          name: userResponse.username || userResponse.email?.split('@')[0] || 'User',
-          bio: userResponse.bio || ''
-        });
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+        toast.error('Failed to load user profile');
       }
-    });
+    };
 
-    return () => unsubscribe();
+    fetchUserData();
   }, []);
-
-  const handleProfilePhotoUpdate = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-      toast.error('Please select an image file');
-      return;
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Image size should be less than 5MB');
-      return;
-    }
-
-    try {
-      setIsUpdatingPhoto(true);
-
-      // Create FormData for Cloudinary upload
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('upload_preset', process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!);
-
-      // Upload to Cloudinary
-      const response = await fetch(
-        `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`,
-        {
-          method: 'POST',
-          body: formData,
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Upload failed');
-      }
-
-      const data = await response.json();
-      const fullUrl = data.secure_url;
-      
-      // Extract just the filename from the Cloudinary URL
-      const filename = fullUrl.split('/').pop(); // Gets just "zybt9ffewrjwhq7tyvy1.png"
-      
-      // Store the full URL in localStorage
-      localStorage.setItem("profile_picture", fullUrl);
-
-      // Update Firebase auth profile with full URL
-      if (auth.currentUser) {
-        await updateProfile(auth.currentUser, {
-          photoURL: fullUrl
-        });
-      }
-
-      // Update local state with full URL
-      setUserProfile(prev => ({
-        ...prev,
-        profilePicture: fullUrl
-      }));
-
-      // Send only the filename to your API
-      let userId = localStorage.getItem('userId') || "404";
-      await apiRequest(`users/${userId}/updatePic/${filename}`, 'PUT');
-
-      toast.success('Profile photo updated successfully');
-    } catch (error) {
-      console.error('Error updating profile photo:', error);
-      toast.error('Failed to update profile photo');
-    } finally {
-      setIsUpdatingPhoto(false);
-    }
-  };
-
-  // Update the handleProfileUpdate function to validate bio length
-const handleProfileUpdate = async () => {
-  try {
-    if (editForm.bio.length > 20) {
-      toast.error('Bio must be 20 characters or less');
-      return;
-    }
-
-    let userId = localStorage.getItem('userId') || "404";
-    const res = await apiRequest(`users/${userId}`,'PUT',{
-      username: editForm.name,
-      bio: editForm.bio
-    });
-
-    setUserProfile(prev => ({
-      ...prev,
-      name: editForm.name,
-      bio: editForm.bio
-    }));
-    setIsEditDialogOpen(false);
-    toast.success('Profile updated successfully');
-  } catch (error) {
-    toast.error('Failed to update profile');
-    console.error(error);
-  }
-};
 
   const handleLikeClick = async (postId: string) => {
     try {
@@ -472,7 +371,7 @@ const handleProfileUpdate = async () => {
               const newLike = {
                 id: Date.now().toString(),
                 user: {
-                  id: userProfile.userId,
+                  id: userProfile.userId, // Add this
                   username: userProfile.name,
                   avatar: userProfile.profilePicture
                 },
@@ -520,7 +419,7 @@ const handleProfileUpdate = async () => {
               const newCommentObj = {
                 id: Date.now().toString(),
                 user: {
-                  id: userProfile.userId,
+                  id: userProfile.userId, // Add this
                   username: userProfile.name,
                   avatar: getFullImageUrl(userProfile.profilePicture) // Use the helper function
                 },
@@ -566,6 +465,11 @@ const handleProfileUpdate = async () => {
     }
   };
 
+  const navigateToUserProfile = (userId: string) => {
+    localStorage.setItem('viewUserId', userId);
+    window.location.href = '/user';
+  };
+
   return (
     <div className="max-w-4xl mx-auto animate-fade-in">
       {/* Profile Header */}
@@ -573,35 +477,13 @@ const handleProfileUpdate = async () => {
         <div className="flex flex-col items-center md:flex-row md:items-start md:gap-8">
           {/* Profile Photo */}
           <div className="relative mb-6 md:mb-0">
-            <Avatar className="w-40 h-40 border-4 border-background shadow-xl hover:scale-105 transition-transform duration-200"
-            onClick={() => navigateToUserProfile(userProfile.userId)}
-            >
+            <Avatar className="w-40 h-40 border-4 border-background shadow-xl">
               <img
                 src={userProfile.profilePicture}
                 alt={userProfile.name}
                 className="object-cover"
               />
             </Avatar>
-            <input
-              type="file"
-              ref={fileInputRef}
-              className="hidden"
-              accept="image/*"
-              onChange={handleProfilePhotoUpdate}
-            />
-            <Button
-              size="icon"
-              variant="secondary"
-              className="absolute bottom-2 right-2 rounded-full shadow-lg hover:shadow-xl transition-all duration-200"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isUpdatingPhoto}
-            >
-              {isUpdatingPhoto ? (
-                <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full" />
-              ) : (
-                <Camera className="h-4 w-4" />
-              )}
-            </Button>
           </div>
 
           {/* Profile Info */}
@@ -610,84 +492,6 @@ const handleProfileUpdate = async () => {
               <div className="space-y-2">
                 <h1 className="text-3xl font-bold mb-2">{userProfile.name}</h1>
                 <p className="text-muted-foreground">{userProfile.bio}</p>
-              </div>
-              <div className="flex gap-2 justify-center md:justify-start mt-4 md:mt-0">
-                <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button className="shadow-lg hover:shadow-xl transition-all duration-200">
-                      <Edit className="h-4 w-4 mr-2" />
-                      Edit Profile
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-[425px]">
-                    <DialogHeader>
-                      <DialogTitle className="text-xl font-semibold">Edit Profile</DialogTitle>
-                    </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                      <div className="grid gap-2">
-                        <label htmlFor="name" className="text-sm font-medium">
-                          Name
-                        </label>
-                        <Input
-                          id="name"
-                          value={editForm.name}
-                          onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                          placeholder="Enter your name"
-                          className="col-span-3"
-                        />
-                      </div>
-                      <div className="grid gap-2">
-                        <label htmlFor="bio" className="text-sm font-medium">
-                          Bio
-                        </label>
-                        <div className="relative">
-                          <Textarea
-                            id="bio"
-                            value={editForm.bio}
-                            onChange={(e) => {
-                              const newValue = e.target.value;
-                              if (newValue.length <= 20) {
-                                setEditForm({ ...editForm, bio: newValue });
-                              }
-                            }}
-                            placeholder="Tell us about yourself (20 chars max)"
-                            className="col-span-3 resize-none pr-16"
-                            rows={4}
-                            maxLength={20}
-                          />
-                          <span className={`absolute bottom-2 right-2 text-xs ${
-                            editForm.bio.length === 20 ? 'text-destructive' : 'text-muted-foreground'
-                          }`}>
-                            {editForm.bio.length}/20
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="outline"
-                        onClick={() => setIsEditDialogOpen(false)}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        onClick={handleProfileUpdate}
-                        disabled={!editForm.name.trim()}
-                      >
-                        Save changes
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-                {/* Commented out Settings button
-                <Button 
-                  variant="outline" 
-                  size="icon"
-                  className="shadow-lg hover:shadow-xl transition-all duration-200"
-                >
-                  <Settings className="h-4 w-4" />
-                </Button>
-                */}
               </div>
             </div>
 
@@ -730,13 +534,12 @@ const handleProfileUpdate = async () => {
             <Card key={post.id} className="p-4 mb-4 shadow-md post-card hover-scale transition-all">
               {/* Post Header */}
               <div className="flex items-center gap-3 mb-4">
-                <Avatar className="w-10 h-10"
-                  onClick={() => navigateToUserProfile(userProfile.userId)}>
+                <Avatar className="w-10 h-10">
                   <img src={userProfile.profilePicture} alt={userProfile.name} />
                 </Avatar>
                 <div className="flex-1">
                   <h3 className="font-semibold">{userProfile.name}</h3>
-                  <p className="text-sm text-muted-foreground">{post.time}</p>
+                  <p className="text-sm text-muted-foreground">{post.createdAt}</p>
                 </div>
               </div>
 
@@ -819,8 +622,10 @@ const handleProfileUpdate = async () => {
                         <div className="space-y-4">
                           {post.likedBy.map((rct) => (
                             <div key={rct.id} className="flex items-center gap-3">
-                              <Avatar className="h-10 w-10"
-                                onClick={() => navigateToUserProfile(rct.user.id)}>
+                              <Avatar 
+                                className="h-10 w-10 cursor-pointer hover:opacity-80"
+                                onClick={() => navigateToUserProfile(rct.user.id)}
+                              >
                                 <img 
                                   src={rct.user.avatar} 
                                   alt={rct.user.username}
@@ -832,7 +637,12 @@ const handleProfileUpdate = async () => {
                                 />
                               </Avatar>
                               <div className="flex-1">
-                                <p className="font-medium">{rct.user.username}</p>
+                                <p 
+                                  className="font-medium cursor-pointer hover:opacity-80"
+                                  onClick={() => navigateToUserProfile(rct.user.id)}
+                                >
+                                  {rct.user.username}
+                                </p>
                                 <p className="text-xs text-muted-foreground">
                                   {timeAgo(rct.createdAt)}
                                 </p>
@@ -873,14 +683,7 @@ const handleProfileUpdate = async () => {
                                   className="h-8 w-8 cursor-pointer hover:opacity-80"
                                   onClick={() => navigateToUserProfile(comment.user.id)}
                                 >
-                                  <img 
-                                    src={comment.user.avatar} 
-                                    alt={comment.user.username}
-                                    onError={(e) => {
-                                      const img = e.target as HTMLImageElement;
-                                      img.src = DEFAULT_AVATAR;
-                                    }}
-                                  />
+                                  <img src={comment.user.avatar} alt={comment.user.username} />
                                 </Avatar>
                                 <div className="flex-1">
                                   <p 
