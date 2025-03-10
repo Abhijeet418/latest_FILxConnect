@@ -38,59 +38,83 @@ const getFullImageUrl = (profilePicture: string | null | undefined): string => {
   if (profilePicture.startsWith('http')) return profilePicture;
   return CLOUDINARY_BASE_URL + profilePicture;
 };
+const commentTimeAgo = (dateString: string) => {
+  const date = new Date(dateString);
+  const now = new Date();
+  
+  // Convert to UTC to avoid timezone issues
+  const utcDate = Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate(),
+    date.getUTCHours(),
+    date.getUTCMinutes(),
+    date.getUTCSeconds()
+  );
+  
+  const utcNow = Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+    now.getUTCHours(),
+    now.getUTCMinutes(),
+    now.getUTCSeconds()
+  );
 
-// First, update the timeAgo function to handle the date format from your API
-function timeAgo(dateString: string | undefined | null) {
-  try {
-    if (!dateString) return 'Just now';
+  const seconds = Math.floor((utcNow - utcDate) / 1000);
 
-    // Parse the date string using the exact format from your API
-    const parsedDate = new Date(dateString);
-    
-    // Add logging to debug the date parsing
-    console.log('Original date string:', dateString);
-    console.log('Parsed date:', parsedDate);
-    
-    if (isNaN(parsedDate.getTime())) {
-      console.error('Invalid date:', dateString);
-      return 'Just now';
+  const intervals = {
+    year: 31536000,
+    month: 2592000,
+    week: 604800,
+    day: 86400,
+    hour: 3600,
+    minute: 60,
+    second: 1
+  };
+
+  for (const [unit, secondsInUnit] of Object.entries(intervals)) {
+    const interval = Math.floor(seconds / secondsInUnit);
+    if (interval >= 1) {
+      return `${interval} ${unit}${interval === 1 ? '' : 's'} ago`;
     }
+  }
+  return 'Just now';
+};
+// Update the timeAgo function for posts (keep the commentTimeAgo as is)
+const timeAgo = (dateString: string) => {
+  // Parse the UTC date string
+  const date = new Date(dateString);
+  const now = new Date();
 
-    const now = new Date();
-    const diffInSeconds = Math.floor((now.getTime() - parsedDate.getTime()) / 1000);
+  // Get the time difference in seconds
+  const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
-    // Debug logging
-    console.log('Current time:', now);
-    console.log('Time difference in seconds:', diffInSeconds);
+  const intervals = {
+    year: 31536000,
+    month: 2592000,
+    week: 604800,
+    day: 86400,
+    hour: 3600,
+    minute: 60,
+    second: 1
+  };
 
-    if (diffInSeconds < 0) {
-      console.warn('Future date detected:', dateString);
-      return 'Just now';
-    }
-
-    const intervals = {
-      year: 31536000,
-      month: 2592000,
-      week: 604800,
-      day: 86400,
-      hour: 3600,
-      minute: 60,
-      second: 1
-    };
-
-    for (const [unit, secondsInUnit] of Object.entries(intervals)) {
-      const interval = Math.floor(diffInSeconds / secondsInUnit);
-      if (interval >= 1) {
-        return `${interval} ${unit}${interval === 1 ? '' : 's'} ago`;
-      }
-    }
-
-    return 'Just now';
-  } catch (error) {
-    console.error('Error in timeAgo:', error, 'for date:', dateString);
+  // Handle just now case first
+  if (seconds < 5) {
     return 'Just now';
   }
-}
+
+  // Find the appropriate interval
+  for (const [unit, secondsInUnit] of Object.entries(intervals)) {
+    const interval = Math.floor(seconds / secondsInUnit);
+    if (interval >= 1) {
+      return `${interval} ${unit}${interval === 1 ? '' : 's'} ago`;
+    }
+  }
+  
+  return 'Just now';
+};
 
 // First, add these interfaces at the top of your file
 interface Author {
@@ -287,6 +311,7 @@ const fetchConnectionPosts = async () => {
         // Get media
         const media = await apiRequest(`media/${post.id}`, 'GET') || [];
 
+        
         return {
           id: post.id,
           author: {
@@ -307,12 +332,13 @@ const fetchConnectionPosts = async () => {
             postId: m.postId
           }))
         };
+
       } catch (error) {
         console.error(`Error enriching post ${post.id}:`, error);
         return null;
       }
     })).then(posts => posts.filter((post) => post !== null));
-
+    console.log('Enriched post:', enrichedPosts);
     // Filter out null posts and sort by date (newest first)
     const validPosts = enrichedPosts
       .sort((a, b) => {
@@ -392,11 +418,11 @@ const fetchConnectionPosts = async () => {
         const uploadPromises = selectedFiles.map(async (file) => {
           const formData = new FormData();
           formData.append('file', file);
-          formData.append('upload_preset', process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!);
-          formData.append('cloud_name', process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME!);
+          formData.append('upload_preset', "filxconnect"!);
+          formData.append('cloud_name', "djvat4mcp"!);
 
           const response = await fetch(
-            `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/auto/upload`,
+            `https://api.cloudinary.com/v1_1/djvat4mcp/auto/upload`,
             {
               method: 'POST',
               body: formData,
@@ -518,6 +544,7 @@ const fetchConnectionPosts = async () => {
         // Fetch current user details to get status
         const userDetails = await apiRequest(`users/${userId}`, 'GET');
         
+        // Update this part to use the server's timestamp
         setPosts(prevPosts => 
           prevPosts.map(post => {
             if (post.id === postId) {
@@ -528,7 +555,8 @@ const fetchConnectionPosts = async () => {
                   avatar: userDetails.status === 0 ? DEFAULT_AVATAR : getFullImageUrl(userProfile.profilePicture)
                 },
                 emoji: '👍',
-                createdAt: new Date().toISOString()
+                // Use the timestamp from the API response
+                createdAt: likeResponse.createdAt || new Date().toISOString()
               };
       
               return {
@@ -990,7 +1018,7 @@ const submitComment = async (postId: string) => {
                             </Avatar>
                             <div className="flex-1">
                               <p className="font-medium">{comment.user.username}</p>
-                              <p className="text-xs text-muted-foreground">{timeAgo(comment.createdAt)}</p>
+                              <p className="text-xs text-muted-foreground">{commentTimeAgo(comment.createdAt)}</p>
                             </div>
                           </div>
                           <p className="text-sm pl-11">{comment.content}</p>

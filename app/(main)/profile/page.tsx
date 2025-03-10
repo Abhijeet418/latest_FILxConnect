@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Avatar } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
-import { Camera, Edit, Heart, MessageCircle, Repeat, Share, Link as LinkIcon, Copy } from 'lucide-react';
+import { Camera, Edit, Heart, MessageCircle, Repeat, Share, Link as LinkIcon, Copy, Trash2, AlertCircle, Router } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { navigateToUserProfile } from '@/lib/navigation';
 import { Input } from "@/components/ui/input";
@@ -22,6 +23,7 @@ import { auth } from '@/lib/Firebase';
 import { onAuthStateChanged, updateProfile } from 'firebase/auth';
 import { apiRequest } from '@/app/apiconnector/api';
 import { Badge } from '@/components/ui/badge';
+import router from 'next/router';
 
 const DEFAULT_AVATAR = "https://res.cloudinary.com/djvat4mcp/image/upload/v1741357526/zybt9ffewrjwhq7tyvy1.png";
 const CLOUDINARY_BASE_URL = "https://res.cloudinary.com/djvat4mcp/image/upload/v1741357526/";
@@ -67,7 +69,8 @@ interface Post {
   likedBy: Reaction[];
   comments: number;
   commentsList: Comment[];
-  mediaUrls: Media[]; // Change this to store the full media objects
+  mediaUrls: Media[];
+  status: string; // Change this to store the full media objects
 }
 
 // First, fix the timeAgo function to handle the specific date format
@@ -150,7 +153,7 @@ export default function ProfilePage() {
       const rawPosts = await apiRequest(`posts/user/${userId}`) || [];
       
       // Filter active posts
-      const activePosts = rawPosts.filter((post: any) => post.status === "1");
+      const activePosts = rawPosts.filter((post: any) => post.status === "1" || post.status === "3");
       
       // Enrich posts with full details
       const enrichedPosts: Post[] = await Promise.all(activePosts.map(async (post: any) => {
@@ -160,7 +163,8 @@ export default function ProfilePage() {
           
           // Get reactions with user details
           const reactionsList = await apiRequest(`reactions/posts/${post.id}`, 'GET') || [];
-          const enrichedReactions = await Promise.all(reactionsList.map(async (reaction: any) => {
+          const reactionsArray = Array.isArray(reactionsList) ? reactionsList : [];
+          const enrichedReactions = await Promise.all(reactionsArray.map(async (reaction: any) => {
             const reactionUserDetails = await apiRequest(`users/${reaction.userId}`, 'GET');
             return {
               id: reaction.id,
@@ -177,7 +181,6 @@ export default function ProfilePage() {
           // Get comments with user details
           const commentsList = await apiRequest(`comments/${post.id}`, 'GET');
           const commentsArray = Array.isArray(commentsList) ? commentsList : [];
-
           const enrichedComments = await Promise.all(commentsArray.map(async (comment: any) => {
             return {
               id: comment.id,
@@ -211,7 +214,8 @@ export default function ProfilePage() {
             comments: enrichedComments.length,
             commentsList: enrichedComments,
             likedBy: enrichedReactions,
-            mediaUrls: mediaList
+            mediaUrls: mediaList,
+            status: post.status
           };
 
         } catch (error) {
@@ -327,6 +331,8 @@ export default function ProfilePage() {
           name: userResponse.username || userResponse.email?.split('@')[0] || 'User',
           bio: userResponse.bio || ''
         });
+      }else{
+        router.push('/login');
       }
     });
 
@@ -353,11 +359,11 @@ export default function ProfilePage() {
       // Create FormData for Cloudinary upload
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('upload_preset', process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!);
+      formData.append('upload_preset', "filxconnect"!);
 
       // Upload to Cloudinary
       const response = await fetch(
-        `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`,
+        `https://api.cloudinary.com/v1_1/djvat4mcp/image/upload`,
         {
           method: 'POST',
           body: formData,
@@ -566,6 +572,29 @@ const handleProfileUpdate = async () => {
     }
   };
 
+  const handleDeletePost = async (postId: string) => {
+    try {
+      const response = await apiRequest(`posts/${postId}`, 'DELETE');
+      console.log("deleted",response);
+      if (response !== undefined) {
+        // Remove the post from state
+        setPosts(prevPosts => prevPosts.filter(post => post.id !== postId));
+        // Update post count
+        setUserProfile(prev => ({
+          ...prev,
+          stats: {
+            ...prev.stats,
+            posts: prev.stats.posts - 1
+          }
+        }));
+        toast.success('Post deleted successfully');
+      }
+    } catch (error) {
+      console.error('Error deleting post:', error);
+      toast.error('Failed to delete post');
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto animate-fade-in">
       {/* Profile Header */}
@@ -738,6 +767,42 @@ const handleProfileUpdate = async () => {
                   <h3 className="font-semibold">{userProfile.name}</h3>
                   <p className="text-sm text-muted-foreground">{post.time}</p>
                 </div>
+                {/* Add Pending Status Icon */}
+                {post.status === "3" && (
+                  <div className="flex items-center mr-2">
+                    <AlertCircle className="h-4 w-4 text-orange-500" />
+                    <span className="ml-1 text-sm text-orange-500">Pending</span>
+                  </div>
+                )}
+                {/* Add Delete Dialog */}
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Delete Post</DialogTitle>
+                    </DialogHeader>
+                    <p>Are you sure you want to delete this post? This action cannot be undone.</p>
+                    <div className="flex justify-end gap-2 mt-4">
+                      <DialogClose asChild>
+                        <Button variant="outline">Cancel</Button>
+                      </DialogClose>
+                      <Button 
+                        variant="destructive"
+                        onClick={() => handleDeletePost(post.id)}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
               </div>
 
               {/* Post Content */}

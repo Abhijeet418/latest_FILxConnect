@@ -14,17 +14,16 @@ export default function PendingApprovalPage() {
   const [userId, setUserId] = useState('');
 
   useEffect(() => {
-
     const Id = localStorage.getItem('userId') || "Bad Request";
     setUserId(Id);
-    console.log(userId + " is the userId");
+
     const checkApproval = async () => {
       try {
         const res = await apiRequest(`users/${userId}`, 'GET');
-        console.log(res.status)
+        console.log('Current status:', res.status);
         if (res?.status === 1) {
           router.push('/home');
-        }else if(res?.status === 0){
+        } else if(res?.status === 0) {
           router.push('/blocked');
         }
       } catch (error) {
@@ -32,8 +31,11 @@ export default function PendingApprovalPage() {
       }
     };
 
+    // Initial check
     checkApproval();
 
+    // Set up intervals
+    const statusInterval = setInterval(checkApproval, 5000); // Check every 5 seconds
     const dotInterval = setInterval(() => {
       setDots((prev) => (prev.length < 3 ? prev + '.' : '.'));
     }, 500);
@@ -45,11 +47,13 @@ export default function PendingApprovalPage() {
       });
     }, 1000);
 
+    // Cleanup intervals
     return () => {
+      clearInterval(statusInterval);
       clearInterval(dotInterval);
       clearInterval(progressInterval);
     };
-  }, [router,userId]); // ✅ Add `router` as dependency
+  }, [router, userId]);
 
   return (
     <div className="flex flex-col items-center space-y-4 p-6 animate-fade-in max-h-screen">

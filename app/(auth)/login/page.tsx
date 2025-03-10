@@ -67,7 +67,7 @@ export default function LoginPage() {
       console.log(user.id);
       if (user?.status === 1) {
         router.push('/home');
-      } else if (user?.status === 2) {
+      } else if (user?.status === 0) {
         router.push('/blocked');
       }else{
         router.push('/pending-approval');

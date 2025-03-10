@@ -48,10 +48,13 @@ export default function NotificationsPage() {
 
   // Add function to format time
   const timeAgo = (dateString: string) => {
+    // Parse the ISO 8601 date string
     const date = new Date(dateString);
     const now = new Date();
+  
+    // Calculate time difference in seconds
     const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-
+  
     const intervals = {
       year: 31536000,
       month: 2592000,
@@ -61,13 +64,14 @@ export default function NotificationsPage() {
       minute: 60,
       second: 1
     };
-
+  
     for (const [unit, secondsInUnit] of Object.entries(intervals)) {
       const interval = Math.floor(seconds / secondsInUnit);
       if (interval >= 1) {
         return `${interval} ${unit}${interval === 1 ? '' : 's'} ago`;
       }
     }
+    
     return 'Just now';
   };
 
@@ -176,9 +180,9 @@ export default function NotificationsPage() {
                 key={notification.id} 
                 className={`p-4 notification-card hover-scale transition-all ${!notification.read ? 'bg-primary/5 dark:bg-primary/10' : ''}`}
                 onClick={() => {
-                  if (!notification.read) {
-                    markAsRead(notification.id);
-                    navigateToPost(notification.postId??"404")
+                  markAsRead(notification.id);
+                  if (notification.postId && !notification.read && !notification.message.includes('rejected')) {
+                    navigateToPost(notification.postId);
                   }
                 }}
               >

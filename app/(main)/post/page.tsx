@@ -181,7 +181,8 @@ export default function ViewPostPage() {
 
       // Get comments
       const commentsList = await apiRequest(`comments/${postId}`, 'GET') || [];
-      const enrichedComments = await Promise.all(commentsList.map(async (comment: any) => {
+      const commentsArray = Array.isArray(commentsList) ? commentsList : [];
+      const enrichedComments = await Promise.all(commentsArray.map(async (comment: any) => {
         return {
           id: comment.id,
           user: {

@@ -5,11 +5,12 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Avatar } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
-import { Camera, Edit, Heart, MessageCircle, Repeat, Share, Link as LinkIcon, Copy, UserMinus } from 'lucide-react';
+import { Camera, Edit, Heart, MessageCircle, Repeat, Share, Link as LinkIcon, Copy, UserMinus, UserPlus, Flag } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -17,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { auth } from '@/lib/Firebase';
 import { onAuthStateChanged, updateProfile } from 'firebase/auth';
 import { apiRequest } from '@/app/apiconnector/api';
@@ -147,6 +149,15 @@ export default function ProfilePage() {
 
   // Add this state
   const [isOwnProfile, setIsOwnProfile] = useState(false);
+
+  // Add this new state at the top of your component
+  const [selectedReason, setSelectedReason] = useState<string>("");
+
+  // Add this state for controlling the dialog
+  const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
+
+  // Add new state for custom reason
+  const [customReason, setCustomReason] = useState("");
 
   const fetchUserPosts = async () => {
     try {
@@ -289,6 +300,7 @@ export default function ProfilePage() {
       const followingResponse = await apiRequest(`followers/${viewUserId}/following/count`, 'GET');
       const followingCount = followingResponse || 0;  // Extract the count from response
 
+      // console.log(followersCount, followingCount, 'followersCount, followingCount');
       setUserProfile(prev => ({
         ...prev,
         stats: {
@@ -357,6 +369,55 @@ export default function ProfilePage() {
     } catch (error) {
       console.error('Error unfollowing user:', error);
       toast.error('Failed to unfollow user');
+    }
+  };
+
+  // Add this new function inside your component
+  const handleFollow = async () => {
+    try {
+      const currentUserId = localStorage.getItem('userId');
+      const viewUserId = localStorage.getItem('viewUserId');
+  
+      const response = await apiRequest(
+        `followers/follow?followerId=${currentUserId}&followingId=${viewUserId}`,
+        'POST'
+      );
+  
+      if (response !== undefined) {
+        setIsFollowing(true);
+        setUserProfile(prev => ({
+          ...prev,
+          stats: {
+            ...prev.stats,
+            followers: prev.stats.followers + 1
+          }
+        }));
+        toast.success('Followed successfully');
+      }
+    } catch (error) {
+      console.error('Error following user:', error);
+      toast.error('Failed to follow user');
+    }
+  };
+  
+  // Add this new function inside your component
+  const handleReport = async (reason: string) => {
+    try {
+      const reporterUserId = localStorage.getItem('userId');
+      const reportedUserId = localStorage.getItem('viewUserId');
+  
+      const response = await apiRequest('reports/user', 'POST', {
+        reporterUserId,
+        reportedUserId,
+        reason
+      });
+  
+      if (response !== undefined) {
+        toast.success('Report submitted successfully');
+      }
+    } catch (error) {
+      console.error('Error reporting user:', error);
+      toast.error('Failed to submit report');
     }
   };
 
@@ -573,12 +634,44 @@ export default function ProfilePage() {
               <div className="space-y-2">
                 <h1 className="text-3xl font-bold mb-2">{userProfile.name}</h1>
                 <p className="text-muted-foreground">{userProfile.bio}</p>
+                
+                {/* Stats Section */}
+                <div className="flex gap-6 justify-center md:justify-start mt-6">
+                  <div className="text-center md:text-left">
+                    <div className="text-2xl font-bold">{userProfile.stats.posts}</div>
+                    <div className="text-sm text-muted-foreground">Posts</div>
+                  </div>
+                  <div className="text-center md:text-left">
+                    <div className="text-2xl font-bold">{userProfile.stats.followers}</div>
+                    <div className="text-sm text-muted-foreground">Followers</div>
+                  </div>
+                  <div className="text-center md:text-left">
+                    <div className="text-2xl font-bold">{userProfile.stats.following}</div>
+                    <div className="text-sm text-muted-foreground">Following</div>
+                  </div>
+                  {true && (
+                    <div className="text-center md:text-left">
+                      <div className={`text-2xl font-bold ${
+                        userProfile.stats.reports === 0 
+                          ? 'text-green-500' 
+                          : userProfile.stats.reports === 1 
+                            ? 'text-orange-500' 
+                            : 'text-destructive'
+                      }`}>
+                        {userProfile.stats.reports}
+                      </div>
+                      <div className="text-sm text-muted-foreground">Reports</div>
+                    </div>
+                  )}
+                </div>
               </div>
+              
               <div className="flex items-center gap-2 mt-4 md:mt-0">
-                {/* Message Button - Always visible */}
+                {/* Message Button */}
                 <Button
                   variant="outline"
-                  className="hover:text-primary"
+                  size="icon"
+                  className="h-10 w-10 hover:text-primary"
                   onClick={() => {
                     localStorage.setItem('messageUserId', userProfile.userId);
                     localStorage.setItem('messageUserName', userProfile.name);
@@ -586,20 +679,94 @@ export default function ProfilePage() {
                     window.location.href = '/messages';
                   }}
                 >
-                  <MessageCircle className="h-4 w-4 mr-2" />
-                  Message
+                  <MessageCircle className="h-5 w-5" />
                 </Button>
+                  {/* Report Button - Only visible if not own profile */}
+                {!isOwnProfile && (
+                  <Dialog open={isReportDialogOpen} onOpenChange={setIsReportDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-10 w-10 hover:text-destructive"
+                      >
+                        <Flag className="h-5 w-5" />
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Report User</DialogTitle>
+                        <DialogDescription>
+                          Please select a reason for reporting this user.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4">
+                        <Select onValueChange={(value) => {
+                          setSelectedReason(value);
+                          if (value !== 'other') {
+                            setCustomReason('');
+                          }
+                        }}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a reason" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="spam">Spam</SelectItem>
+                            <SelectItem value="harassment">Harassment</SelectItem>
+                            <SelectItem value="inappropriate">Inappropriate Content</SelectItem>
+                            <SelectItem value="impersonation">Impersonation</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
 
-                {/* Unfollow Button - Only visible if not own profile and following */}
-                {!isOwnProfile && isFollowing && (
+                        {selectedReason === 'other' && (
+                          <Textarea
+                            placeholder="Please specify the reason..."
+                            value={customReason}
+                            onChange={(e) => setCustomReason(e.target.value)}
+                            className="min-h-[100px]"
+                          />
+                        )}
+
+                        <div className="flex justify-end">
+                          <Button 
+                            onClick={async () => {
+                              await handleReport(selectedReason === 'other' ? customReason : selectedReason);
+                              setSelectedReason("");
+                              setCustomReason("");
+                              setIsReportDialogOpen(false);
+                            }}
+                            disabled={!selectedReason || (selectedReason === 'other' && !customReason.trim())}
+                          >
+                            Done
+                          </Button>
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                )}
+                {/* Follow/Unfollow Button - Only visible if not own profile */}
+                {!isOwnProfile && (
                   <Button
                     variant="outline"
-                    onClick={handleUnfollow}
+                    className="hover:text-primary"
+                    onClick={isFollowing ? handleUnfollow : handleFollow}
                   >
-                    <UserMinus className="h-4 w-4 mr-2" />
-                    Unfollow
+                    {isFollowing ? (
+                      <>
+                        <UserMinus className="h-5 w-5 mr-2" />
+                        Unfollow
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus className="h-5 w-5 mr-2" />
+                        Follow
+                      </>
+                    )}
                   </Button>
                 )}
+
+                
               </div>
             </div>
 

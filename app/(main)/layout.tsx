@@ -28,7 +28,7 @@ import { ProgressTimer } from '@/components/ui/progress-timer';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiRequest } from '../apiconnector/api';
 import { auth } from '@/lib/Firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { set } from 'zod';
 import { toast } from 'react-toastify';
 import { navigateToUserProfile } from '@/lib/navigation';
@@ -233,7 +233,7 @@ export default function MainLayout({
 
 
   const router = useRouter();
-  const { signOut } = useAuth();
+  // const { signOut } = useAuth();
 
   const handleNavClick = (href: string, name: string) => {
     if (name === 'Post') {
@@ -297,6 +297,8 @@ export default function MainLayout({
           email: User.email || 'Loading...',
           photoURL: user.photoURL || DEFAULT_AVATAR
         });
+      }else{
+        router.push("/login");
       }
     });
 
@@ -342,6 +344,7 @@ export default function MainLayout({
           email: '',
           photoURL: DEFAULT_AVATAR
         });
+        router.push("/login");
       }
     });
   
@@ -536,7 +539,7 @@ export default function MainLayout({
                             variant="outline"
                             className="w-full justify-start hover-scale"
                             onClick={async () => {
-                              await signOut();
+                              await signOut(auth);
                               router.push('/login');
                             }}
                           >
@@ -555,7 +558,7 @@ export default function MainLayout({
                     size="icon"
                     className="hover-scale"
                     onClick={async () => {
-                      await signOut();
+                      await signOut(auth);
                       router.push('/login');
                     }}
                   >
@@ -573,7 +576,8 @@ export default function MainLayout({
         <div className="fixed left-0 top-16 h-[calc(100vh-4rem)] w-64 p-4 hidden md:block animate-fade-in">
           {/* Replace the existing sidebar user section */}
           <div className="flex items-center gap-3 mb-4 p-2">
-            <Avatar className="h-10 w-10">
+            <Avatar className="h-10 w-10"
+            onClick={() => router.push('/profile')}>
               <img 
                 src={currentUser.photoURL || DEFAULT_AVATAR} 
                 alt={currentUser.username}
@@ -714,7 +718,8 @@ export default function MainLayout({
                   style={{ animationDelay: `${index * 0.1}s` }}
                 >
                   <div className="flex items-center gap-3">
-                    <Avatar className="h-10 w-10">
+                    <Avatar className="h-10 w-10"
+                    onClick={() => navigateToUserProfile(user.id.toString())}>
                       <img 
                         src={getFullImageUrl(user.profilePicture)}
                         alt={user.username}
@@ -818,7 +823,8 @@ export default function MainLayout({
                     className="flex items-center gap-4 p-3 rounded-lg hover:bg-muted transition-all duration-200"
                   >
                     <div className="relative">
-                      <Avatar className="h-12 w-12">
+                      <Avatar className="h-12 w-12"
+                      onClick={() => navigateToUserProfile(connection.id.toString())}>
                         <img 
                           src={getFullImageUrl(connection.profilePicture)}
                           alt={connection.username}
@@ -854,22 +860,24 @@ export default function MainLayout({
       </Dialog>
 
       <Dialog open={isSuggestionsModalOpen} onOpenChange={setIsSuggestionsModalOpen}>
-        <DialogContent className="max-w-4xl h-[80vh] overflow-hidden flex flex-col">
-          <DialogHeader className="sticky top-0 bg-background z-10 pb-4">
-            <DialogTitle className="text-2xl font-bold">
-              Suggested Connections
-            </DialogTitle>
-            <div className="relative mt-4">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="search"
-                placeholder="Search people..."
-                className="w-full pl-10 bg-muted/50"
-                value={suggestionsSearchQuery}
-                onChange={(e) => setSuggestionsSearchQuery(e.target.value)}
-              />
-            </div>
-          </DialogHeader>
+  <DialogContent className="max-w-2xl h-[80vh] overflow-hidden flex flex-col">
+    <DialogHeader className="sticky top-0 bg-background z-10 pb-4">
+      <div className="flex items-center">
+        <DialogTitle className="text-lg font-bold">
+          Suggested Connections
+        </DialogTitle>
+      </div>
+      <div className="relative mt-4">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          type="search"
+          placeholder="Search people..."
+          className="w-full pl-10 pr-4 bg-muted/50"
+          value={suggestionsSearchQuery}
+          onChange={(e) => setSuggestionsSearchQuery(e.target.value)}
+        />
+      </div>
+    </DialogHeader>
 
           <div className="flex-1 overflow-y-auto dialog-scroll pr-4 -mr-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -887,7 +895,8 @@ export default function MainLayout({
                       className="p-4 hover:shadow-md transition-all"
                     >
                       <div className="flex items-center gap-4">
-                        <Avatar className="h-12 w-12">
+                        <Avatar className="h-12 w-12"
+                        onClick={() => navigateToUserProfile(user.id.toString())}>
                           <img 
                             src={getFullImageUrl(user.profilePicture)}
                             alt={user.username}
@@ -972,7 +981,11 @@ export default function MainLayout({
                           <Card key={post.id} className="p-4">
                             <div className="flex justify-between items-start mb-2">
                               <p className="text-sm text-muted-foreground">{post.time}</p>
-                              <Badge variant="outline" className="bg-yellow-50">Pending Review</Badge>
+                              <Badge 
+                              variant='secondary'
+                            >
+                               Pending
+                            </Badge>
                             </div>
                             <p className="mb-4">{post.content}</p>
                           </Card>
@@ -1154,7 +1167,9 @@ export default function MainLayout({
                         </Button>
                       )}
                       
-                      <Link href={`/profile/${user.id}`}>
+                      <Link
+                      onClick={() => navigateToUserProfile(user.id)}
+                       href={`/user`}>
                         <Button
                           variant="ghost"
                           size="sm"
